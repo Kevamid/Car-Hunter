@@ -6,8 +6,8 @@ from bs4 import BeautifulSoup
 from playwright.async_api import async_playwright
 
 # --- CONFIGURATION ---
-TELEGRAM_BOT_TOKEN = "8928164216:AAErwgwGyvPFShdr2pPkKDQVJQlzepg7A68"
-TELEGRAM_CHAT_ID = "7040962786"
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "YOUR_LOCAL_TOKEN_IF_TESTING")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "YOUR_LOCAL_CHAT_ID_IF_TESTING")
 TARGET_URL = "https://www.pistonheads.com/buy/search?category=used-cars&sort=price-asc"
 
 # --- DATABASE SETUP ---
