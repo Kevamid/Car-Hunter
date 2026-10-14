@@ -1,0 +1,28 @@
+[
+  {
+    "make": "BMW",
+    "model": "M140i",
+    "max_price": 22000
+  },
+  {
+    "make": "Toyota",
+    "model": "GT86",
+    "max_price": 15000
+  },
+  {
+    "make": "Porsche",
+    "model": "Cayman",
+    "max_price": 20000
+  },
+  {
+    "make": "Mazda",
+    "model": "MX-5",
+    "max_price": 10000
+  },
+  {
+    "make": "Renault",
+    "model": "Clio Sport",
+    "max_price": 5500,
+    "aliases": ["197", "200", "rs", "renaultsport", "sport", "cup", "trophy"]
+  }
+]
