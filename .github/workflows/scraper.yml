@@ -2,7 +2,7 @@ name: Car Hunter Pipeline
 
 on:
   schedule:
-    - cron: '0 */4 * * *'  # Runs every 4 hours (adjust as you like)
+    - cron: '0 */2 * * *'  # Runs every 2 hours (adjust as you like)
   workflow_dispatch:        # Allows manual trigger from the GitHub Actions tab
 
 jobs:
