@@ -1,155 +1,97 @@
-import logging
 import re
-from urllib.parse import quote_plus
-from playwright.sync_api import sync_playwright
-from scrapers.base import BaseScraper
-from utils.db import upsert_listing
-from utils.notifier import send_telegram_alert
+from datetime import datetime, timedelta
 
-class PistonHeadsScraper(BaseScraper):
-    def __init__(self):
-        super().__init__("PistonHeads")
+def sanitize_title(raw_title: str) -> str:
+    """Strips 'SPONSORED', 'FEATURED', and trailing price tags from card headings."""
+    if not raw_title:
+        return ""
+    
+    # 1. Strip 'SPONSORED' or 'FEATURED' prefix (case-insensitive)
+    cleaned = re.sub(r'^(sponsored|featured)\b\s*', '', raw_title, flags=re.IGNORECASE)
+    
+    # 2. Remove price appended at the end of the title string (e.g., £15,995 or £15995)
+    cleaned = re.sub(r'£\d{1,3}(,\d{3})*\s*$', '', cleaned)
+    
+    # 3. Normalize multiple whitespace spaces
+    return re.sub(r'\s+', ' ', cleaned).strip()
 
-    def fetch_listings(self, car_config: dict) -> list:
-        make = car_config.get("make", "").strip()
-        model = car_config.get("model", "").strip()
-        max_price = int(car_config.get("max_price", 0))
-        aliases = car_config.get("aliases", [])
 
-        # Construct search query for PistonHeads keywords
-        search_query = f"{make} {model}"
-        search_url = f"https://www.pistonheads.com/buy/search?keywords={quote_plus(search_query)}"
-        if max_price > 0:
-            search_url += f"&priceTo={max_price}"
+def parse_date_listed(date_text: str) -> bool:
+    """
+    Evaluates whether the listing was posted within the allowed window (e.g. 24–48 hours).
+    Returns True if listing is fresh, False if stale.
+    """
+    if not date_text:
+        return True  # If no date string is found, let it pass to rely on DB duplication checks
+        
+    text_lower = date_text.lower().strip()
+    
+    # Instant matches for fresh listings
+    if any(keyword in text_lower for keyword in ["just added", "today", "hour", "minute"]):
+        return True
+    if "yesterday" in text_lower:
+        return True
+        
+    # Check for 'X days ago' pattern
+    days_match = re.search(r'(\d+)\s*day', text_lower)
+    if days_match:
+        days_old = int(days_match.group(1))
+        return days_old <= 2  # Keep listings <= 2 days old (48h max)
+        
+    # If explicit date string like '15 Oct 2026'
+    try:
+        parsed_date = datetime.strptime(date_text, "%d %b %Y")
+        return (datetime.now() - parsed_date) <= timedelta(hours=48)
+    except ValueError:
+        pass
+        
+    return True
 
-        self.logger.info(f"Targeting PistonHeads URL: {search_url}")
-        new_listings = []
 
-        try:
-            with sync_playwright() as p:
-                browser = p.chromium.launch(
-                    headless=True,
-                    args=["--disable-blink-features=AutomationControlled", "--no-sandbox"]
-                )
-                context = browser.new_context(
-                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
-                    viewport={"width": 1280, "height": 800}
-                )
-                page = context.new_page()
+def get_pistonheads_listings(page, base_url: str):
+    """Fetches PistonHeads search page, ensuring explicit DateCreatedDesc sort."""
+    
+    # Force 'Most Recent' sort order via query parameter if missing
+    if "sortOptions=" not in base_url and "sort=" not in base_url:
+        delimiter = "&" if "?" in base_url else "?"
+        target_url = f"{base_url}{delimiter}sortOptions=DateCreatedDesc"
+    else:
+        target_url = base_url
 
-                page.goto(search_url, wait_until="domcontentloaded", timeout=30000)
-                page.wait_for_timeout(5000)
+    page.goto(target_url, wait_until="domcontentloaded")
+    
+    listing_cards = page.query_selector_all(".ad-listing, [data-ad-id]")
+    extracted_data = []
 
-                listings_data = page.evaluate("""() => {
-                    const items = [];
-                    const cards = document.querySelectorAll('a[href*="/buy/"]:not([href*="search"]), div[data-testid="listing-card"], article');
-                    const seenUrls = new Set();
+    for card in listing_cards:
+        # Extract title element
+        title_el = card.query_selector(".ad-heading, .listing-title, h3")
+        raw_title = title_el.inner_text() if title_el else ""
+        clean_title = sanitize_title(raw_title)
 
-                    cards.forEach(card => {
-                        const linkEl = card.tagName === 'A' ? card : card.querySelector('a[href*="/buy/"]');
-                        if (!linkEl) return;
+        # Extract date added / age tag
+        date_el = card.query_selector(".ad-date, .listing-posted-date, .date-added")
+        date_text = date_el.inner_text() if date_el else ""
 
-                        const href = linkEl.href;
-                        if (seenUrls.has(href)) return;
-                        seenUrls.add(href);
+        # Check age filter (Skip stale/old ads)
+        if not parse_date_listed(date_text):
+            continue
 
-                        const cardText = card.innerText || "";
-                        const lines = cardText.split('\\n').map(l => l.trim()).filter(l => l.length > 0);
+        # Extract URL & Price
+        link_el = card.query_selector("a[href*='/buy/listing/']")
+        url = link_el.get_attribute("href") if link_el else ""
+        if url and not url.startswith("http"):
+            url = f"https://www.pistonheads.com{url}"
 
-                        let title = lines.length > 0 ? lines[0] : "PistonHeads Listing";
+        price_el = card.query_selector(".ad-price, .price")
+        price = price_el.inner_text().strip() if price_el else "N/A"
 
-                        items.push({
-                            url: href,
-                            title: title,
-                            rawText: cardText
-                        });
-                    });
-                    return items;
-                }""")
+        if clean_title and url:
+            extracted_data.append({
+                "title": clean_title,
+                "price": price,
+                "url": url,
+                "date_text": date_text
+            })
 
-                browser.close()
-
-                target_make = make.lower()
-                target_model = model.lower()
-                all_aliases = [a.lower() for a in aliases]
-                all_aliases.append(target_model.replace(" ", ""))
-
-                for item in listings_data:
-                    raw_url = item.get("url", "")
-                    title = item.get("title", "")
-                    raw_text = item.get("rawText", "")
-
-                    if not raw_url:
-                        continue
-
-                    parts = raw_url.rstrip("/").split("?")[0].split("/")
-                    persisted_id = parts[-1] if parts else raw_url
-
-                    combined_str = f"{title} {raw_url} {raw_text}".lower()
-                    combined_clean = combined_str.replace(" ", "").replace("-", "").replace("_", "")
-
-                    if target_make not in combined_str:
-                        continue
-
-                    # Validate model or any configured alias
-                    matched_variant = any(alias.replace(" ", "") in combined_clean for alias in all_aliases)
-                    if not matched_variant:
-                        continue
-
-                    price_raw = 0
-                    price_match = re.search(r'[£€$]\s*([\d,]+)', raw_text)
-                    formatted_price = price_match.group(0) if price_match else "Check Link"
-                    if price_match:
-                        price_raw = int(price_match.group(1).replace(",", ""))
-
-                    if max_price > 0 and price_raw > max_price and price_raw > 0:
-                        continue
-
-                    year_match = re.search(r'\b(19\d{2}|20\d{2})\b', combined_str)
-                    extracted_year = year_match.group(1) if year_match else "N/A"
-
-                    mileage_match = re.search(r'([\d,]+)\s*(?:miles|mi|kilometres|km)', raw_text, re.IGNORECASE)
-                    extracted_mileage = f"{mileage_match.group(1)} mi" if mileage_match else "N/A"
-
-                    clean_url = raw_url.split("?")[0]
-
-                    listing_data = {
-                        "url": clean_url,
-                        "source": "PistonHeads",
-                        "external_id": str(persisted_id),
-                        "make": make,
-                        "model": model,
-                        "title": title,
-                        "price_raw": price_raw,
-                        "price_formatted": formatted_price,
-                        "mileage": extracted_mileage,
-                        "year": extracted_year,
-                        "transmission": None,
-                        "fuel_type": None,
-                        "location": None,
-                        "seller_type": None
-                    }
-
-                    is_new = upsert_listing(listing_data)
-                    if is_new:
-                        new_listings.append(listing_data)
-                        send_telegram_alert(
-                            title=title,
-                            price=formatted_price,
-                            url=clean_url,
-                            source="PistonHeads",
-                            mileage=extracted_mileage,
-                            year=extracted_year
-                        )
-                        self.logger.info(f"✨ NEW PH DISCOVERY: {title} ({formatted_price}) | Year: {extracted_year} | Mileage: {extracted_mileage} -> {clean_url}")
-
-                self.logger.info(f"Successfully processed {len(new_listings)} new verified listings for {make} {model} on PistonHeads.")
-
-        except Exception as e:
-            self.logger.error(f"Playwright scraping error for PistonHeads ({make} {model}): {e}")
-
-        return new_listings
-
-    def scrape(self, car_config: dict) -> int:
-        results = self.fetch_listings(car_config)
-        return len(results)
+    return extracted_data
