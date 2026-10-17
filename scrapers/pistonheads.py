@@ -23,16 +23,15 @@ Note: the site's `total` includes the (up to 3) sponsored adverts, so a complete
 scan has  organic_scanned + sponsored == total.
 """
 
-import html
 import json
-import os
 import re
 import time
-import urllib.error
-import urllib.request
 from urllib.parse import parse_qs, urlencode, urlparse
 
 from playwright.sync_api import sync_playwright
+
+from utils.matching import any_alias_in_text
+from utils.notifier import format_alert, send_telegram
 
 BASE_URL = "https://www.pistonheads.com"
 SEARCH_URL = f"{BASE_URL}/buy/search"
@@ -252,48 +251,6 @@ def matches_query(listing, tokens):
     """Every token must appear in the title/make/model."""
     haystack = _norm(f"{listing['title']} {listing['make']} {listing['model']}")
     return all(_norm(t) in haystack for t in tokens)
-
-
-def format_alert(item):
-    """Telegram (HTML) message for one listing."""
-    esc = lambda value: html.escape(str(value))  # noqa: E731
-    facts = []
-    if item.get("mileage") is not None:
-        facts.append(f"{item['mileage']:,} miles")
-    facts += [esc(x) for x in (item.get("transmission"), item.get("fuel")) if x]
-    where = " · ".join(esc(x) for x in (item.get("location"), item.get("seller_type")) if x)
-    lines = [f"🚗 <b>{esc(item.get('name') or item['title'])}</b> — {esc(item['price'])}"]
-    if facts:
-        lines.append(" · ".join(facts))
-    if where:
-        lines.append(f"📍 {where}")
-    if item.get("title") and item["title"].lower() not in (item.get("name") or "").lower():
-        lines.append(esc(item["title"][:110]))  # skip when it only repeats the headline
-    lines.append(f"{esc(item['source'])}: {item['url']}")
-    return "\n".join(lines)
-
-
-def send_telegram(text):
-    """Send a message using the same secrets as the workflow.
-
-    Returns True (sent), False (tried and failed) or None (Telegram not configured).
-    Never prints the exception text: urllib errors can embed the request URL,
-    which contains the bot token.
-    """
-    token = os.getenv("TELEGRAM_BOT_TOKEN")
-    chat_id = os.getenv("TELEGRAM_CHAT_ID")
-    if not token or not chat_id:
-        return None
-    body = urlencode({"chat_id": chat_id, "text": text, "parse_mode": "HTML"}).encode()
-    request = urllib.request.Request(f"https://api.telegram.org/bot{token}/sendMessage", data=body)
-    try:
-        with urllib.request.urlopen(request, timeout=15) as response:
-            return response.status == 200
-    except urllib.error.HTTPError as exc:
-        print(f"[{SOURCE}] Telegram send failed: HTTP {exc.code}")
-    except Exception as exc:
-        print(f"[{SOURCE}] Telegram send failed: {type(exc).__name__}")
-    return False
 
 
 class PistonHeadsScraper:
@@ -560,11 +517,13 @@ class PistonHeadsScraper:
             return []
 
         # Only match on titles for filters the server did not apply.
+        aliases = (query.get("aliases") or []) if isinstance(query, dict) else []
         tokens = []
         if make and not all(m["make_applied"] for m in metas):
             tokens += make.split()
         if model and not all(m["model_applied"] for m in metas):
-            tokens += model.split()
+            # With aliases, they stand in for the rest of the model name ("Clio Sport" -> "Clio" + an alias).
+            tokens += model.split()[:1] if aliases else model.split()
         if (make_id and not all(m["make_applied"] for m in metas)) or \
            (model_ids and not all(m["model_applied"] for m in metas)):
             print(f"[{self.name}] WARNING: server did not apply an ID filter for {query!r} "
@@ -573,6 +532,9 @@ class PistonHeadsScraper:
         scanned = len(listings)
         if tokens:
             listings = [item for item in listings if matches_query(item, tokens)]
+        if aliases:  # at least one alias as a whole word in the headline or PistonHeads' model name
+            listings = [item for item in listings
+                        if any_alias_in_text(f"{item['title']} {item['model']}", aliases)]
         after_title = len(listings)
 
         # Price window from the query (listings with no usable price are dropped).

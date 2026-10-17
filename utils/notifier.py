@@ -1,33 +1,52 @@
+"""Telegram alerts shared by every scraper, so all sources look the same."""
+import html
 import os
-import requests
+import urllib.error
+import urllib.request
+from urllib.parse import urlencode
 
-def send_telegram_alert(title: str, price: str, url: str, source: str = "PistonHeads", mileage: str = "N/A", year: str = "N/A"):
-    bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
+
+def format_alert(item):
+    """Telegram (HTML) message for one listing.
+
+    `item` keys: title, price, source, url, and optionally name, mileage (int),
+    transmission, fuel, location, seller_type.
+    """
+    esc = lambda value: html.escape(str(value))  # noqa: E731
+    facts = []
+    if item.get("mileage") is not None:
+        facts.append(f"{item['mileage']:,} miles")
+    facts += [esc(x) for x in (item.get("transmission"), item.get("fuel")) if x]
+    where = " · ".join(esc(x) for x in (item.get("location"), item.get("seller_type")) if x)
+    lines = [f"🚗 <b>{esc(item.get('name') or item['title'])}</b> — {esc(item['price'])}"]
+    if facts:
+        lines.append(" · ".join(facts))
+    if where:
+        lines.append(f"📍 {where}")
+    if item.get("title") and item["title"].lower() not in (item.get("name") or "").lower():
+        lines.append(esc(item["title"][:110]))  # skip when it only repeats the headline
+    lines.append(f"{esc(item['source'])}: {item['url']}")
+    return "\n".join(lines)
+
+
+def send_telegram(text):
+    """Send a message using the same secrets as the workflow.
+
+    Returns True (sent), False (tried and failed) or None (Telegram not configured).
+    Never prints the exception text: urllib errors can embed the request URL,
+    which contains the bot token.
+    """
+    token = os.getenv("TELEGRAM_BOT_TOKEN")
     chat_id = os.getenv("TELEGRAM_CHAT_ID")
-
-    if not bot_token or not chat_id:
-        print("Telegram credentials missing in environment variables.")
-        return
-
-    message = (
-        f"🚗 **New Listing Found!** ({source})\n\n"
-        f"**Title:** {title}\n"
-        f"**Price:** {price}\n"
-        f"**Year:** {year}\n"
-        f"**Mileage:** {mileage}\n"
-        f"**Link:** [View Listing]({url})"
-    )
-
-    telegram_url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-    payload = {
-        "chat_id": chat_id,
-        "text": message,
-        "parse_mode": "Markdown",
-        "disable_web_page_preview": False
-    }
-
+    if not token or not chat_id:
+        return None
+    body = urlencode({"chat_id": chat_id, "text": text, "parse_mode": "HTML"}).encode()
+    request = urllib.request.Request(f"https://api.telegram.org/bot{token}/sendMessage", data=body)
     try:
-        response = requests.post(telegram_url, json=payload)
-        response.raise_for_status()
-    except Exception as e:
-        print(f"Failed to send Telegram alert: {e}")
+        with urllib.request.urlopen(request, timeout=15) as response:
+            return response.status == 200
+    except urllib.error.HTTPError as exc:
+        print(f"Telegram send failed: HTTP {exc.code}")
+    except Exception as exc:
+        print(f"Telegram send failed: {type(exc).__name__}")
+    return False

@@ -53,9 +53,31 @@ def init_db():
         )
     """)
 
+    # Searches that have completed a first (silent) run; see is_search_seeded()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS seeded_searches (
+            search_key TEXT PRIMARY KEY,       -- e.g. 'car & classic|renault|clio sport'
+            seeded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
     conn.commit()
     conn.close()
     logging.info("Database schema initialized successfully.")
+
+def is_search_seeded(search_key: str) -> bool:
+    """True once a search has run before. Its first run saves listings without alerting,
+    so adding a car (or a new scraper) does not flood Telegram with old adverts."""
+    conn = get_db_connection()
+    row = conn.execute("SELECT 1 FROM seeded_searches WHERE search_key = ?", (search_key,)).fetchone()
+    conn.close()
+    return row is not None
+
+def mark_search_seeded(search_key: str):
+    conn = get_db_connection()
+    conn.execute("INSERT OR IGNORE INTO seeded_searches (search_key) VALUES (?)", (search_key,))
+    conn.commit()
+    conn.close()
 
 def is_listing_seen(clean_url: str) -> bool:
     """Checks if a listing URL already exists in the database."""
