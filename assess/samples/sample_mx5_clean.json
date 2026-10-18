@@ -1,0 +1,224 @@
+{
+  "registration": "SAMPLE2",
+  "make": "MAZDA",
+  "model": "MX-5",
+  "firstUsedDate": "2009-05-12",
+  "fuelType": "Petrol",
+  "primaryColour": "Silver",
+  "registrationDate": "2009-05-12",
+  "manufactureDate": "2009-04-01",
+  "engineSize": "1798",
+  "hasOutstandingRecall": "No",
+  "motTests": [
+    {
+      "registrationAtTimeOfTest": null,
+      "completedDate": "2012-05-08T10:15:00.000Z",
+      "testResult": "PASSED",
+      "expiryDate": "2013-05-11",
+      "odometerValue": "21000",
+      "odometerUnit": "MI",
+      "odometerResultType": "READ",
+      "motTestNumber": null,
+      "dataSource": "DVSA",
+      "defects": []
+    },
+    {
+      "registrationAtTimeOfTest": null,
+      "completedDate": "2013-05-08T10:15:00.000Z",
+      "testResult": "PASSED",
+      "expiryDate": "2014-05-11",
+      "odometerValue": "27100",
+      "odometerUnit": "MI",
+      "odometerResultType": "READ",
+      "motTestNumber": null,
+      "dataSource": "DVSA",
+      "defects": []
+    },
+    {
+      "registrationAtTimeOfTest": null,
+      "completedDate": "2014-05-08T10:15:00.000Z",
+      "testResult": "PASSED",
+      "expiryDate": "2015-05-11",
+      "odometerValue": "33500",
+      "odometerUnit": "MI",
+      "odometerResultType": "READ",
+      "motTestNumber": null,
+      "dataSource": "DVSA",
+      "defects": []
+    },
+    {
+      "registrationAtTimeOfTest": null,
+      "completedDate": "2015-05-08T10:15:00.000Z",
+      "testResult": "PASSED",
+      "expiryDate": "2016-05-11",
+      "odometerValue": "40200",
+      "odometerUnit": "MI",
+      "odometerResultType": "READ",
+      "motTestNumber": null,
+      "dataSource": "DVSA",
+      "defects": []
+    },
+    {
+      "registrationAtTimeOfTest": null,
+      "completedDate": "2016-05-08T10:15:00.000Z",
+      "testResult": "PASSED",
+      "expiryDate": "2017-05-11",
+      "odometerValue": "46300",
+      "odometerUnit": "MI",
+      "odometerResultType": "READ",
+      "motTestNumber": null,
+      "dataSource": "DVSA",
+      "defects": [
+        {
+          "text": "Nearside Rear Tyre worn close to legal limit",
+          "type": "ADVISORY",
+          "dangerous": false
+        }
+      ]
+    },
+    {
+      "registrationAtTimeOfTest": null,
+      "completedDate": "2017-05-08T10:15:00.000Z",
+      "testResult": "PASSED",
+      "expiryDate": "2018-05-11",
+      "odometerValue": "52700",
+      "odometerUnit": "MI",
+      "odometerResultType": "READ",
+      "motTestNumber": null,
+      "dataSource": "DVSA",
+      "defects": []
+    },
+    {
+      "registrationAtTimeOfTest": null,
+      "completedDate": "2018-05-08T10:15:00.000Z",
+      "testResult": "FAILED",
+      "expiryDate": null,
+      "odometerValue": "59400",
+      "odometerUnit": "MI",
+      "odometerResultType": "READ",
+      "motTestNumber": null,
+      "dataSource": "DVSA",
+      "defects": [
+        {
+          "text": "Headlamp aim too high",
+          "type": "MAJOR",
+          "dangerous": false
+        }
+      ]
+    },
+    {
+      "registrationAtTimeOfTest": null,
+      "completedDate": "2018-05-08T10:15:00.000Z",
+      "testResult": "PASSED",
+      "expiryDate": "2019-05-11",
+      "odometerValue": "59400",
+      "odometerUnit": "MI",
+      "odometerResultType": "READ",
+      "motTestNumber": null,
+      "dataSource": "DVSA",
+      "defects": []
+    },
+    {
+      "registrationAtTimeOfTest": null,
+      "completedDate": "2019-05-08T10:15:00.000Z",
+      "testResult": "PASSED",
+      "expiryDate": "2020-05-11",
+      "odometerValue": "65500",
+      "odometerUnit": "MI",
+      "odometerResultType": "READ",
+      "motTestNumber": null,
+      "dataSource": "DVSA",
+      "defects": []
+    },
+    {
+      "registrationAtTimeOfTest": null,
+      "completedDate": "2020-05-08T10:15:00.000Z",
+      "testResult": "PASSED",
+      "expiryDate": "2021-05-11",
+      "odometerValue": "71900",
+      "odometerUnit": "MI",
+      "odometerResultType": "READ",
+      "motTestNumber": null,
+      "dataSource": "DVSA",
+      "defects": []
+    },
+    {
+      "registrationAtTimeOfTest": null,
+      "completedDate": "2021-05-08T10:15:00.000Z",
+      "testResult": "PASSED",
+      "expiryDate": "2022-05-11",
+      "odometerValue": "78600",
+      "odometerUnit": "MI",
+      "odometerResultType": "READ",
+      "motTestNumber": null,
+      "dataSource": "DVSA",
+      "defects": [
+        {
+          "text": "Nearside Rear Tyre worn close to legal limit",
+          "type": "ADVISORY",
+          "dangerous": false
+        }
+      ]
+    },
+    {
+      "registrationAtTimeOfTest": null,
+      "completedDate": "2022-05-08T10:15:00.000Z",
+      "testResult": "PASSED",
+      "expiryDate": "2023-05-11",
+      "odometerValue": "84700",
+      "odometerUnit": "MI",
+      "odometerResultType": "READ",
+      "motTestNumber": null,
+      "dataSource": "DVSA",
+      "defects": []
+    },
+    {
+      "registrationAtTimeOfTest": null,
+      "completedDate": "2023-05-08T10:15:00.000Z",
+      "testResult": "PASSED",
+      "expiryDate": "2024-05-11",
+      "odometerValue": "91100",
+      "odometerUnit": "MI",
+      "odometerResultType": "READ",
+      "motTestNumber": null,
+      "dataSource": "DVSA",
+      "defects": []
+    },
+    {
+      "registrationAtTimeOfTest": null,
+      "completedDate": "2024-05-08T10:15:00.000Z",
+      "testResult": "PASSED",
+      "expiryDate": "2025-05-11",
+      "odometerValue": "97800",
+      "odometerUnit": "MI",
+      "odometerResultType": "READ",
+      "motTestNumber": null,
+      "dataSource": "DVSA",
+      "defects": []
+    },
+    {
+      "registrationAtTimeOfTest": null,
+      "completedDate": "2025-05-08T10:15:00.000Z",
+      "testResult": "PASSED",
+      "expiryDate": "2026-05-11",
+      "odometerValue": "103900",
+      "odometerUnit": "MI",
+      "odometerResultType": "READ",
+      "motTestNumber": null,
+      "dataSource": "DVSA",
+      "defects": []
+    },
+    {
+      "registrationAtTimeOfTest": null,
+      "completedDate": "2026-05-08T10:15:00.000Z",
+      "testResult": "PASSED",
+      "expiryDate": "2027-05-11",
+      "odometerValue": "110100",
+      "odometerUnit": "MI",
+      "odometerResultType": "READ",
+      "motTestNumber": null,
+      "dataSource": "DVSA",
+      "defects": []
+    }
+  ]
+}

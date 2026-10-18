@@ -1,0 +1,12 @@
+{
+  "registration": "SAMPLE3",
+  "make": "TOYOTA",
+  "model": "GR86",
+  "manufactureYear": "2024",
+  "fuelType": "Petrol",
+  "primaryColour": "Red",
+  "registrationDate": "2024-09-01",
+  "manufactureDate": "2024-07-15",
+  "motTestDueDate": "2027-08-31",
+  "hasOutstandingRecall": "Unknown"
+}

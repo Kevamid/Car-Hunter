@@ -89,6 +89,23 @@ Quick live pagination check (no DB, no alerts; Mazda has ~250 results in 48h):
 `python -c "from scrapers.pistonheads import PistonHeadsScraper; print(len(PistonHeadsScraper().fetch({'make': 'Mazda'})))"`
 Expect a log line `pagination via /api/graphql SearchPage` and a count around 250.
 
+## Advert assessment (`assess/`, Oct 2026, v1 in progress)
+Compares what an advert claims with official DVSA MOT records. Private to Kev until API terms and data protection
+are checked. `python -m assess AB12CDE --price 8995 --miles 74000 --colour silver` (or `--text advert.txt`,
+`--sample assess/samples/<file>.json` to run offline). Tests: `python -m unittest discover -s tests`.
+- `mot.py`: DVSA MOT history API (`GET https://history.mot.api.gov.uk/v1/trade/vehicles/registration/{reg}`),
+  Entra client-credentials token (scope `https://tapi.dvsa.gov.uk/.default`) + `X-API-Key`. Env: `MOT_CLIENT_ID`,
+  `MOT_CLIENT_SECRET`, `MOT_API_KEY`, `MOT_TOKEN_URL`. Limits 15 req/s, burst 10, 500k/day. Errors never echo secrets.
+  Response includes `hasOutstandingRecall` (free recall check). New cars: `motTestDueDate`, no tests.
+- `vehicle.py` normalises the response (tests oldest first, km -> miles); `parse.py` extracts plate/price/mileage/
+  year/colour/fuel/engine from text; `checks.py` rules -> findings (red/amber/green/info + seller question);
+  `report.py` plain-text report (terminal and Telegram); `store.py` caches lookups 24h in `mot_lookups`.
+- Samples in `assess/samples/` are SYNTHETIC, built from the official OpenAPI spec; nothing has hit the real API yet.
+- DVLA Vehicle Enquiry API registration is closed (Oct 2026): tax status, export flag and V5C-issue date are missing
+  until it reopens; add them as optional checks keyed on `DVLA_API_KEY`.
+- Next: Telegram bot (milestone 4), model weak-spot notes (milestone 6); v2 price vs eBay, browser extension,
+  paid write-off/finance checks.
+
 ## Status: scrapers PAUSED (Oct 2026)
 PistonHeads' terms (updated 23 Feb 2026) forbid scraping/data mining without prior written permission; Car & Classic
 likewise has no permission. Both are commented out in `main.py`, and Kev has emailed both sites for permission.
