@@ -108,7 +108,11 @@ are checked. `python -m assess AB12CDE --price 8995 --miles 74000 --colour silve
   `getUpdates` on the same bot as the alerts (@Driver_focused_bot); answers only `ASSESS_ALLOWED_CHAT_IDS`
   (default `TELEGRAM_CHAT_ID`); replies in plain text, split under Telegram's 4096-char limit. Runs on Kev's PC
   for now (GitHub Actions can't host an always-on bot).
-- Next: model weak-spot notes (milestone 6); v2 price vs eBay, browser extension, paid write-off/finance checks.
+- Links: the bot never opens advert pages (automated access); a link-only message gets a site-specific "paste
+  the text or send the registration" reply. eBay links are reserved for the eBay API once approved.
+- `model_notes.py`: sourced weak spots for Kev's five models, limited by year/engine size; amber when the car's
+  own MOT defects match the note's pattern. Review new notes with Kev before adding; cite the source.
+- Next: v2 price vs eBay, browser extension, paid write-off/finance checks.
 
 ## Status: scrapers PAUSED (Oct 2026)
 PistonHeads' terms (updated 23 Feb 2026) forbid scraping/data mining without prior written permission; Car & Classic

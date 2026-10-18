@@ -121,6 +121,40 @@ class CheckTests(unittest.TestCase):
         self.assertIn("does NOT check write-off", text)
 
 
+class ModelNoteTests(unittest.TestCase):
+    def car(self, make, model, reg_date, cc, defects=()):
+        tests = [{"completedDate": "2025-05-01T00:00:00Z", "testResult": "PASSED", "expiryDate": "2026-12-01",
+                  "odometerValue": "60000", "odometerUnit": "MI", "odometerResultType": "READ", "dataSource": "DVSA",
+                  "defects": [{"text": t, "type": "ADVISORY", "dangerous": False} for t in defects]}]
+        return vehicle_from_api({"make": make, "model": model, "registrationDate": reg_date,
+                                 "engineSize": str(cc), "hasOutstandingRecall": "Unknown", "motTests": tests})
+
+    def notes(self, vehicle):
+        return [f for f in run_checks(vehicle, parse_advert(""), today=TODAY) if "weak spot" in f.message]
+
+    def test_cayman_engine_and_year_rules(self):
+        s = " ".join(f.message for f in self.notes(self.car("PORSCHE", "CAYMAN S", "2006-04-01", 3387)))
+        self.assertIn("Bore scoring", s)
+        self.assertIn("IMS", s)
+        s = " ".join(f.message for f in self.notes(self.car("PORSCHE", "CAYMAN", "2006-04-01", 2687)))
+        self.assertNotIn("Bore scoring", s)
+        s = " ".join(f.message for f in self.notes(self.car("PORSCHE", "CAYMAN", "2010-04-01", 2893)))
+        self.assertNotIn("IMS", s)                                   # 987.2 has no IMS
+
+    def test_mot_evidence_raises_to_amber(self):
+        found = self.notes(self.car("MAZDA", "MX-5", "2002-06-01", 1840, ["Nearside sill corroded"]))
+        rust = next(f for f in found if "Rust" in f.message)
+        self.assertEqual(rust.severity, AMBER)
+        self.assertIn("shows signs of it (2025)", rust.message)
+        self.assertEqual(self.notes(self.car("MAZDA", "MX-5", "2010-06-01", 1999)), [])  # NC: no NA/NB notes
+
+    def test_only_intended_models(self):
+        self.assertEqual(self.notes(self.car("RENAULT", "CLIO", "2008-06-01", 1149)), [])  # not a 2.0 RS
+        self.assertTrue(self.notes(self.car("RENAULT", "CLIO RENAULTSPORT", "2008-06-01", 1998)))
+        self.assertTrue(self.notes(self.car("BMW", "M140I", "2017-06-01", 2998)))
+        self.assertTrue(self.notes(self.car("SUBARU", "BRZ", "2014-06-01", 1998)))
+
+
 class FakeResponse(io.BytesIO):
     def __enter__(self):
         return self
@@ -204,6 +238,15 @@ class BotTests(unittest.TestCase):
         def limited(reg):
             raise mot.MotApiError(429, "MOTH-RL-02", "slow down")
         self.assertIn("rate-limiting", self.handle("AB12CDE", lookup=limited))
+
+    def test_links(self):
+        reply = self.handle("https://www.pistonheads.com/buy/listing/12345678")
+        self.assertIn("can't open adverts on PistonHeads", reply)
+        self.assertIn("eBay API access", self.handle("https://www.ebay.co.uk/itm/123456789012"))
+        self.assertIn("can't open adverts on that site", self.handle("https://example.com/car/AB12CDE-ish"))
+        # a registration alongside the link wins; plate-like text inside the link is ignored
+        self.assertIn("Verdict:", self.handle("AB12CDE https://www.gumtree.com/p/toyota/x/1803657854"))
+        self.assertNotIn("Verdict:", self.handle("https://www.carandclassic.com/l/C2199321AB12CDE"))
 
     def test_split_message(self):
         from assess.bot import split_message

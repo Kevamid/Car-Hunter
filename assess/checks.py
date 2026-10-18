@@ -228,8 +228,25 @@ def check_advert_text(vehicle, advert, today):
     return out
 
 
+def check_model_notes(vehicle, advert, today):
+    """Known weak spots for the model; amber when the car's own MOT history shows the symptom."""
+    from assess.model_notes import notes_for
+    label, notes = notes_for(vehicle)
+    out = []
+    for note in notes:
+        years = sorted({t.date.year for t in vehicle.tests for d in t.defects
+                        if note.mot and re.search(note.mot, d.text, re.I)})
+        if years:
+            seen = f"{years[0]}" if len(years) == 1 else f"{years[0]}–{years[-1]}"
+            out.append(Finding(AMBER, f"{label} weak spot, and this car's MOT history shows signs of it ({seen}): "
+                                      f"{note.text}", note.question))
+        else:
+            out.append(Finding(INFO, f"{label} weak spot: {note.text}", note.question))
+    return out
+
+
 CHECKS = [check_too_new, check_recall, check_identity, check_mot_status, check_mileage, check_gaps,
-          check_failures, check_recurring, check_latest_advisories, check_advert_text]
+          check_failures, check_recurring, check_latest_advisories, check_advert_text, check_model_notes]
 
 
 def run_checks(vehicle, advert, today=None):

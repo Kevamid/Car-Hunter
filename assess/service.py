@@ -1,4 +1,7 @@
 """One entry point for "assess this": used by the command line and the Telegram bot."""
+import re
+from urllib.parse import urlparse
+
 from assess.checks import run_checks
 from assess.mot import MotApiError, MotClient, normalise_registration
 from assess.parse import parse_advert
@@ -12,6 +15,30 @@ HELP = ("Send me a registration, optionally with what the advert claims, e.g.\n"
         "whether the advert matches the record.")
 
 
+URL_RE = re.compile(r"https?://\S+|(?:www\.)?[a-z0-9-]+\.(?:co\.uk|com)/\S*", re.I)
+SITES = {
+    "pistonheads.": "PistonHeads", "autotrader.": "Autotrader", "carandclassic.": "Car & Classic",
+    "gumtree.": "Gumtree", "facebook.": "Facebook Marketplace", "cargurus.": "CarGurus", "motors.": "Motors",
+}
+SHARE_TIP = ("Copy the advert's text (select all on the page) and paste it here, as long as it shows the "
+             "registration. Or just send the registration with the price and mileage, e.g.\n"
+             "AB12CDE £8,995 74k miles")
+
+
+def link_reply(text):
+    """Reply for a message that is only a link (no registration). The bot never opens
+    advert pages itself: that would be automated access to the site."""
+    url = URL_RE.search(text)
+    if not url:
+        return None
+    host = urlparse(url.group(0) if "://" in url.group(0) else "https://" + url.group(0)).netloc.lower()
+    if "ebay." in host:
+        return ("eBay links will work once eBay API access is approved. For now: " + SHARE_TIP[0].lower()
+                + SHARE_TIP[1:])
+    site = next((name for key, name in SITES.items() if key in host), "that site")
+    return f"I can't open adverts on {site} directly. {SHARE_TIP}"
+
+
 def api_lookup(registration, _client=[]):
     """Real MOT API lookup, cached for 24h in the project database."""
     from assess.store import cached_vehicle_payload  # needs the project database
@@ -22,9 +49,9 @@ def api_lookup(registration, _client=[]):
 
 def assess_text(text, lookup=api_lookup, today=None):
     """Reply text for a free-text request (a registration and/or advert text)."""
-    advert = parse_advert(text)
+    advert = parse_advert(URL_RE.sub(" ", text))  # links can contain plate-like fragments
     if not advert.registration:
-        return "I couldn't find a registration in that.\n\n" + HELP
+        return link_reply(text) or "I couldn't find a registration in that.\n\n" + HELP
     try:
         payload = lookup(advert.registration)
     except MotApiError as exc:
