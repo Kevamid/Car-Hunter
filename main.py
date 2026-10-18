@@ -32,11 +32,15 @@ def run_pipeline():
         logging.warning("No car configurations found in config.json. Exiting pipeline.")
         return
 
-    # Initialize scraper registry
+    # Initialize scraper registry.
+    # PistonHeads and Car & Classic are PAUSED (Oct 2026): their terms need prior written permission
+    # for automated access, which has been requested. Re-enable a scraper only once its site agrees.
     scrapers = [
-        PistonHeadsScraper(),
-        CarAndClassicScraper()
+        # PistonHeadsScraper(),
+        # CarAndClassicScraper(),
     ]
+    if not scrapers:
+        logging.warning("No scrapers enabled (PistonHeads and Car & Classic paused pending permission).")
 
     for scraper in scrapers:
         logging.info(f"--- Running Scraper: {scraper.name} ---")

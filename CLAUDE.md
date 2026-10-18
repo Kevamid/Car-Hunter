@@ -89,6 +89,13 @@ Quick live pagination check (no DB, no alerts; Mazda has ~250 results in 48h):
 `python -c "from scrapers.pistonheads import PistonHeadsScraper; print(len(PistonHeadsScraper().fetch({'make': 'Mazda'})))"`
 Expect a log line `pagination via /api/graphql SearchPage` and a count around 250.
 
+## Status: scrapers PAUSED (Oct 2026)
+PistonHeads' terms (updated 23 Feb 2026) forbid scraping/data mining without prior written permission; Car & Classic
+likewise has no permission. Both are commented out in `main.py`, and Kev has emailed both sites for permission.
+Re-enable a scraper ONLY after its site agrees in writing, and follow any conditions it sets (e.g. an identifying
+user agent instead of the Chrome one). Checking `robots.txt` is not enough: always read the site's terms too.
+The workflow still runs every 2 hours (free on a public repo), which keeps the `listings-db` artifact from expiring.
+
 ## Open items
 1. Done: Car & Classic rewritten (see its section above).
 2. Done: both scrapers apply `aliases` (see "Aliases" below). "sport" was removed from the Clio aliases because it let
@@ -99,7 +106,12 @@ Expect a log line `pagination via /api/graphql SearchPage` and a count around 25
 4. Car & Classic on Actions: move the workflow to a self-hosted runner on Kev's PC (see "Verified" above).
    Workflow: add a `concurrency:` group so two runs cannot overlap and overwrite the DB artifact. Consider caching the
    Playwright browser to save Actions minutes.
-5. Ideas: alert on price drops (data already in `price_history`), 24h freshness window, more sources (eBay Browse API is the
+5. Next source: eBay Motors via the official Browse API (waiting on Kev's developer keys). Other sites checked Oct 2026:
+   Gumtree's robots.txt disallows query strings (`Disallow: /*?`, sort/max_price/q/pagination), and plain model pages
+   in relevance order miss most new listings, so it is parked. Autotrader (Cloudflare, partner-only API), CarGurus
+   (verification wall), eBay web search (Akamai 403), Facebook (login) skipped; Motors.co.uk now redirects to Cazoo.
+   No proxy / anti-bot services (e.g. Crawlbase): Kev agreed, legitimate routes only (official APIs, home runner).
+6. Ideas: alert on price drops (data already in `price_history`), 24h freshness window, more sources (eBay Browse API is the
    only open API among the sites considered; Autotrader's is partner-only), MOT history check via DVSA API,
    curated newsletter from `is_curated_candidate`.
 
