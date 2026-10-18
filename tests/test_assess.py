@@ -169,5 +169,48 @@ class MotClientTests(unittest.TestCase):
         self.assertNotIn("KEY-VALUE", str(ctx.exception))
 
 
+class BotTests(unittest.TestCase):
+    def setUp(self):
+        with open(os.path.join(SAMPLES, "sample_cayman_concerns.json"), encoding="utf-8") as f:
+            self.payload = json.load(f)
+        self.sent = []
+
+    def send(self, text, chat_id):
+        self.sent.append((chat_id, text))
+
+    def update(self, text, chat_id=111):
+        return {"update_id": 1, "message": {"chat": {"id": chat_id}, "text": text}}
+
+    def handle(self, text, chat_id=111, lookup=None):
+        from assess.bot import handle_update
+        return handle_update(self.update(text, chat_id), {"111"}, lookup or (lambda reg: self.payload), self.send)
+
+    def test_assesses_allowed_chat(self):
+        reply = self.handle("SA12MPL £14,490 74k miles silver")
+        self.assertIn("Verdict:", reply)
+        self.assertTrue(all(chat == "111" for chat, _ in self.sent))
+
+    def test_ignores_other_chats(self):
+        self.assertIsNone(self.handle("SA12MPL", chat_id=999))
+        self.assertEqual(self.sent, [])
+
+    def test_help_and_missing_registration(self):
+        self.assertIn("Send me a registration", self.handle("/start"))
+        self.assertIn("couldn't find a registration", self.handle("is this cayman any good?"))
+
+    def test_not_found_and_rate_limit(self):
+        self.assertIn("No MOT record found", self.handle("AB12CDE", lookup=lambda reg: None))
+
+        def limited(reg):
+            raise mot.MotApiError(429, "MOTH-RL-02", "slow down")
+        self.assertIn("rate-limiting", self.handle("AB12CDE", lookup=limited))
+
+    def test_split_message(self):
+        from assess.bot import split_message
+        chunks = split_message("\n".join(["x" * 300] * 30), limit=1000)
+        self.assertTrue(all(len(c) <= 1000 for c in chunks))
+        self.assertEqual("".join(chunks).count("x"), 300 * 30)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -11,9 +11,10 @@ import sys
 from dotenv import load_dotenv
 
 from assess.checks import run_checks
-from assess.mot import MotApiError, MotClient, normalise_registration
+from assess.mot import MotApiError, MotClient
 from assess.parse import parse_advert
 from assess.report import build_report
+from assess.service import api_lookup
 from assess.vehicle import vehicle_from_api
 
 
@@ -46,9 +47,8 @@ def main(argv=None):
         if not MotClient.configured():
             parser.error("MOT API credentials missing (MOT_CLIENT_ID, MOT_CLIENT_SECRET, MOT_API_KEY, "
                          "MOT_TOKEN_URL in .env); use --sample to try a saved response")
-        from assess.store import cached_vehicle_payload  # needs the project database
         try:
-            payload = cached_vehicle_payload(normalise_registration(advert.registration), MotClient().vehicle)
+            payload = api_lookup(advert.registration)
         except MotApiError as exc:
             print(exc, file=sys.stderr)
             return 1

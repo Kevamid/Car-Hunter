@@ -103,8 +103,12 @@ are checked. `python -m assess AB12CDE --price 8995 --miles 74000 --colour silve
 - Samples in `assess/samples/` are SYNTHETIC, built from the official OpenAPI spec; nothing has hit the real API yet.
 - DVLA Vehicle Enquiry API registration is closed (Oct 2026): tax status, export flag and V5C-issue date are missing
   until it reopens; add them as optional checks keyed on `DVLA_API_KEY`.
-- Next: Telegram bot (milestone 4), model weak-spot notes (milestone 6); v2 price vs eBay, browser extension,
-  paid write-off/finance checks.
+- `service.py`: shared `assess_text()` / `api_lookup()` for the CLI and the bot.
+- `bot.py`: Telegram bot (`python -m assess.bot`, or `--sample <file>` to answer any reg with a sample). Long-polls
+  `getUpdates` on the same bot as the alerts (@Driver_focused_bot); answers only `ASSESS_ALLOWED_CHAT_IDS`
+  (default `TELEGRAM_CHAT_ID`); replies in plain text, split under Telegram's 4096-char limit. Runs on Kev's PC
+  for now (GitHub Actions can't host an always-on bot).
+- Next: model weak-spot notes (milestone 6); v2 price vs eBay, browser extension, paid write-off/finance checks.
 
 ## Status: scrapers PAUSED (Oct 2026)
 PistonHeads' terms (updated 23 Feb 2026) forbid scraping/data mining without prior written permission; Car & Classic

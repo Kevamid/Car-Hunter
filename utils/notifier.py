@@ -29,18 +29,22 @@ def format_alert(item):
     return "\n".join(lines)
 
 
-def send_telegram(text):
+def send_telegram(text, chat_id=None, parse_mode="HTML"):
     """Send a message using the same secrets as the workflow.
 
+    chat_id defaults to TELEGRAM_CHAT_ID; parse_mode=None sends plain text.
     Returns True (sent), False (tried and failed) or None (Telegram not configured).
     Never prints the exception text: urllib errors can embed the request URL,
     which contains the bot token.
     """
     token = os.getenv("TELEGRAM_BOT_TOKEN")
-    chat_id = os.getenv("TELEGRAM_CHAT_ID")
+    chat_id = chat_id or os.getenv("TELEGRAM_CHAT_ID")
     if not token or not chat_id:
         return None
-    body = urlencode({"chat_id": chat_id, "text": text, "parse_mode": "HTML"}).encode()
+    fields = {"chat_id": chat_id, "text": text}
+    if parse_mode:
+        fields["parse_mode"] = parse_mode
+    body = urlencode(fields).encode()
     request = urllib.request.Request(f"https://api.telegram.org/bot{token}/sendMessage", data=body)
     try:
         with urllib.request.urlopen(request, timeout=15) as response:
