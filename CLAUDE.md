@@ -76,7 +76,11 @@ DB/alert flow (run against the real `utils/db.py`). NOT yet verified: any full G
 may be blocked or served different content by PistonHeads: watch for "no __NEXT_DATA__" in the log), live API
 pagination (no search so far exceeded one page), real Telegram delivery from the new code.
 Car & Classic (Oct 2026): `fetch_listings` verified live for all 5 configured cars; seeding/alert/retry/cap flow verified
-offline with a temp DB and a fake notifier. Not yet run in Actions.
+offline with a temp DB and a fake notifier.
+First Actions run (17 Oct 2026): PistonHeads works from GitHub. Car & Classic does NOT: Cloudflare serves a managed
+challenge (HTTP 403, `cf-mitigated: challenge`, "Just a moment...") to datacenter IPs; the whole site, even robots.txt,
+is behind it. The scraper detects this on the first page, logs one warning and skips the site for that run. Do not add
+stealth plugins, proxies or challenge solvers to get around it. Plan: a self-hosted runner on Kev's PC (home IP works).
 
 Quick live pagination check (no DB, no alerts; Mazda has ~250 results in 48h):
 `python -c "from scrapers.pistonheads import PistonHeadsScraper; print(len(PistonHeadsScraper().fetch({'make': 'Mazda'})))"`
@@ -90,7 +94,8 @@ Expect a log line `pagination via /api/graphql SearchPage` and a count around 25
    run: `git rm --cached` them and make sure `.gitignore` (the old file was misnamed `gitignore`) lists `.env`, `venv/`,
    `data/`, `__pycache__/`, `*.pyc`. Do not untrack the DB before that run: the committed copy seeds the runner and prevents a
    burst of repeat alerts.
-4. Workflow: add a `concurrency:` group so two runs cannot overlap and overwrite the DB artifact. Consider caching the
+4. Car & Classic on Actions: move the workflow to a self-hosted runner on Kev's PC (see "Verified" above).
+   Workflow: add a `concurrency:` group so two runs cannot overlap and overwrite the DB artifact. Consider caching the
    Playwright browser to save Actions minutes.
 5. Ideas: alert on price drops (data already in `price_history`), 24h freshness window, more sources (eBay Browse API is the
    only open API among the sites considered; Autotrader's is partner-only), MOT history check via DVSA API,

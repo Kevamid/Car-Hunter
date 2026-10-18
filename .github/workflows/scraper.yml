@@ -33,6 +33,7 @@ jobs:
 
       - name: Run Pipeline
         env:
+          PYTHONUNBUFFERED: "1"  # keep print() output in order with the logging lines
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |

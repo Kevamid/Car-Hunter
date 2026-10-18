@@ -83,10 +83,16 @@ def listing_from_result(result):
     }
 
 
+class CloudflareChallenge(Exception):
+    """The site served Cloudflare's bot check instead of results. It does this to
+    datacenter IPs such as GitHub's runners; a home connection gets through."""
+
+
 class CarAndClassicScraper(BaseScraper):
     def __init__(self, config=None, notifier=None):
         super().__init__(SOURCE)
         self.config = config or {}
+        self.blocked = False  # set on the first Cloudflare challenge; skips the rest of the run
         self.notifier = notifier or send_telegram  # callable(text) -> True / False / None
         self.max_alerts = self.config.get("max_alerts_per_query", 15)
         self.alert_delay_s = self.config.get("alert_delay_s", 1.1)  # Telegram: ~1 msg/s per chat
@@ -107,8 +113,12 @@ class CarAndClassicScraper(BaseScraper):
         if self._loaded:
             time.sleep(self.page_delay_s)
         self._loaded += 1
-        page.goto(url, wait_until="domcontentloaded", timeout=30000)
-        props = read_page_props(page.content())
+        response = page.goto(url, wait_until="domcontentloaded", timeout=30000)
+        html = page.content()
+        challenged = response is not None and (response.headers.get("cf-mitigated") == "challenge")
+        if challenged or "<title>Just a moment...</title>" in html:
+            raise CloudflareChallenge(url)
+        props = read_page_props(html)
         if props is None or "searchResults" not in props:
             raise RuntimeError(f"no search results JSON on {url} (blocked or page changed?)")
         return props
@@ -246,11 +256,23 @@ class CarAndClassicScraper(BaseScraper):
         The first run of a search saves everything without alerting (see is_search_seeded).
         """
         make, model = car_config.get("make"), car_config.get("model")
+        if self.blocked:
+            self.logger.info(f"Skipped {make} {model}: Cloudflare challenge earlier in this run.")
+            return 0
+        try:
+            items = self.fetch_listings(car_config)
+        except CloudflareChallenge:
+            # Do not retry or work around it: skip the site for this run (no requests, nothing saved).
+            self.blocked = True
+            self.logger.warning("Car & Classic served a Cloudflare challenge (expected on GitHub's runners); "
+                                "skipping it for this run. It works from a home connection.")
+            return 0
+
         search_key = f"{SOURCE}|{make}|{model}".lower()
         seeding = not is_search_seeded(search_key)
         new_count = sent = unsent = 0
 
-        for item in self.fetch_listings(car_config):
+        for item in items:
             row = self._to_db_row(item, car_config)
             if is_listing_seen(row["url"]):
                 upsert_listing(row)  # refreshes last_seen and records price changes
