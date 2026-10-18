@@ -1,6 +1,11 @@
+# Secrets
+.env
+local_config.json
+
+# Python
+venv/
 __pycache__/
 *.pyc
-venv/
-.env
-data/listings.db
-local_config.json
+
+# Runtime data (the database lives in the listings-db Actions artifact)
+data/

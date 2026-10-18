@@ -10,7 +10,10 @@ Python, Playwright (sync API), SQLite, GitHub Actions (cron every 2 hours + manu
 - `main.py` loads `config.json` (list of cars) and runs every scraper for every car.
 - `scrapers/pistonheads.py` PistonHeads (rewritten; see below).
 - `scrapers/car_and_classic.py` Car & Classic.
-- `utils/db.py` SQLite helpers. DB file: `data/listings.db`.
+- `scrapers/base.py` small base class (logger, `is_written_off`) used by Car & Classic.
+- `utils/db.py` SQLite helpers. DB file: `data/listings.db` (not in git; the runner gets it from the artifact, and
+  if the artifact is missing or expired it starts empty: PistonHeads may then alert on up to 15 listings per search).
+- `utils/matching.py` whole-word alias matching shared by the scrapers.
 - `utils/notifier.py` shared Telegram sender and HTML alert format used by every scraper.
 - `.github/workflows/*.yml` "Car Hunter Pipeline": downloads the previous `listings-db` artifact into `data/`, runs
   `python main.py`, uploads `data/listings.db` again (30 day retention). Secrets: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`.
@@ -90,10 +93,9 @@ Expect a log line `pagination via /api/graphql SearchPage` and a count around 25
 1. Done: Car & Classic rewritten (see its section above).
 2. Done: both scrapers apply `aliases` (see "Aliases" below). "sport" was removed from the Clio aliases because it let
    through non-RS cars ("Clio Campus Sport 1.2").
-3. Housekeeping: `data/listings.db` and `scrapers/__pycache__/*.pyc` are tracked in git. After the first successful Actions
-   run: `git rm --cached` them and make sure `.gitignore` (the old file was misnamed `gitignore`) lists `.env`, `venv/`,
-   `data/`, `__pycache__/`, `*.pyc`. Do not untrack the DB before that run: the committed copy seeds the runner and prevents a
-   burst of repeat alerts.
+3. Done (Oct 2026): DB and `.pyc` files untracked, `.gitignore` covers `.env`, `venv/`, `data/`, `__pycache__/`,
+   `*.pyc`; old `curl_cffi` debug scripts and the `next_data_debug.json` dump removed; unused `requests` dependency and
+   `mark_listing_as_seen` helper removed.
 4. Car & Classic on Actions: move the workflow to a self-hosted runner on Kev's PC (see "Verified" above).
    Workflow: add a `concurrency:` group so two runs cannot overlap and overwrite the DB artifact. Consider caching the
    Playwright browser to save Actions minutes.
@@ -103,6 +105,8 @@ Expect a log line `pagination via /api/graphql SearchPage` and a count around 25
 
 ## Security and conduct
 - Never commit `.env` or tokens. If a token ever reaches git history, rotate it with BotFather.
+  The repo is PUBLIC, and commit 2418f33 contains a `.env` with the bot token: it must be treated as leaked
+  (rotate with BotFather, then update the GitHub secret and the local `.env`).
 - Do not print Telegram exception text: urllib errors can embed the URL, which contains the bot token.
 - Browser/cURL dumps contain cookies: never commit or share them.
 - Scraping may breach the sites' terms; this is personal use at low volume. Check legal position before charging anyone.

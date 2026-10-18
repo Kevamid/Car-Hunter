@@ -1,7 +1,6 @@
 import sqlite3
 import os
 import logging
-from datetime import datetime
 
 DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "listings.db")
 
@@ -169,15 +168,3 @@ def upsert_listing(data: dict) -> bool:
         conn.commit()
         conn.close()
         return True  # New listing added!
-
-# Backwards compatibility helper for existing scraper logic
-def mark_listing_as_seen(clean_url: str, title: str, price_str: str, source: str = "Unknown"):
-    import re
-    numeric_price = int(re.sub(r"[^\d]", "", price_str)) if re.search(r"\d+", price_str) else 0
-    upsert_listing({
-        "url": clean_url,
-        "title": title,
-        "price_raw": numeric_price,
-        "price_formatted": price_str,
-        "source": source
-    })
