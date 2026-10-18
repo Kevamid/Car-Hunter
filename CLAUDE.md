@@ -105,8 +105,8 @@ Expect a log line `pagination via /api/graphql SearchPage` and a count around 25
 
 ## Security and conduct
 - Never commit `.env` or tokens. If a token ever reaches git history, rotate it with BotFather.
-  The repo is PUBLIC, and commit 2418f33 contains a `.env` with the bot token: it must be treated as leaked
-  (rotate with BotFather, then update the GitHub secret and the local `.env`).
+  The repo is PUBLIC. Old commits (up to 2418f33: `.env`, and an early `car_tracker.py`) contain a bot token that
+  Kev revoked in Oct 2026; checked 18 Oct 2026 that the current token is not in history.
 - Do not print Telegram exception text: urllib errors can embed the URL, which contains the bot token.
 - Browser/cURL dumps contain cookies: never commit or share them.
 - Scraping may breach the sites' terms; this is personal use at low volume. Check legal position before charging anyone.
