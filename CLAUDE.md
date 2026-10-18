@@ -131,7 +131,20 @@ The workflow still runs every 2 hours (free on a public repo), which keeps the `
 4. Car & Classic on Actions: move the workflow to a self-hosted runner on Kev's PC (see "Verified" above).
    Workflow: add a `concurrency:` group so two runs cannot overlap and overwrite the DB artifact. Consider caching the
    Playwright browser to save Actions minutes.
-5. Next source: eBay Motors via the official Browse API (waiting on Kev's developer keys). Other sites checked Oct 2026:
+5. Next source: eBay Motors via the official Browse API (waiting on Kev's developer keys; env names
+   `EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET`). Plan once approved, in order:
+   a. Listing alerts from `config.json` (price, aliases, seeding as the other scrapers; fixed-price and
+      classified only, auctions skipped), with the main photo.
+   b. eBay links in the assessment bot: item ID -> listing details -> registration from item specifics -> MOT report.
+   c. Repair-cost estimates: typical eBay parts prices for issues the MOT history flags (negotiating figure).
+      Parts earn eBay Partner Network commission (vehicles mostly don't), so this is the likeliest income source.
+   d. Price vs market from similar live listings (asking prices, not sold; the sold-price Marketplace Insights
+      API is restricted), then deal scoring = price vs market + MOT assessment.
+   e. Later: seller-side pricing helper; market trends over time (check the API licence's data-retention and
+      caching rules first). Read the eBay API licence with Kev before anything public.
+   Other open data parked for later (Kev holding fire, Oct 2026): DVSA bulk MOT data via the MOT API's
+   `bulk-download` endpoint (model benchmarks), DVSA recall details, Companies House + FCA Register (dealer
+   legitimacy), ULEZ/CAZ estimate, VCA fuel/CO2 data (running costs), postcodes.io (distance). Other sites checked Oct 2026:
    Gumtree's robots.txt disallows query strings (`Disallow: /*?`, sort/max_price/q/pagination), and plain model pages
    in relevance order miss most new listings, so it is parked. Autotrader (Cloudflare, partner-only API), CarGurus
    (verification wall), eBay web search (Akamai 403), Facebook (login) skipped; Motors.co.uk now redirects to Cazoo.
