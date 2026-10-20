@@ -80,8 +80,10 @@ The compliant source: eBay's own API, so it is the one scraper enabled in `main.
 - First run per search seeds silently (`seeded_searches`); new listings get one `getItem` call for item specifics
   (mileage, year, owners, MOT expiry, service history, private/dealer) and a Telegram PHOTO alert (falls back to
   text). Alert-then-save, 15-alert cap, as the others.
-- Registration: eBay masks the "Reg. Mark" specific; dealers usually put the plate in the description, private
-  sellers usually don't (sample of 15, Oct 2026). Matters for eBay links in the assessment bot (plan 5b).
+- Registration: eBay masks the "Reg. Mark" specific ("**13 ***"). Only 1 of 30 fresh listings (Oct 2026) showed a
+  plate we could confirm. An earlier "dealers usually include it" sample was WRONG: dealer descriptions carry tens of
+  KB of CSS/JS whose tokens look like plates. `assess/ebay_link.py` strips style/script, and accepts a plate only if
+  it fits the mask, or (no mask) is the single plate written right after "reg"/"registration".
 - GitHub secrets needed: `EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET` (the workflow passes them through).
 
 ## Aliases (both scrapers, `utils/matching.py`)
@@ -127,7 +129,7 @@ are checked. `python -m assess AB12CDE --price 8995 --miles 74000 --colour silve
   (default `TELEGRAM_CHAT_ID`); replies in plain text, split under Telegram's 4096-char limit. Runs on Kev's PC
   for now (GitHub Actions can't host an always-on bot).
 - Links: the bot never opens advert pages (automated access); a link-only message gets a site-specific "paste
-  the text or send the registration" reply. eBay links are reserved for the eBay API once approved.
+  the text or send the registration" reply. eBay links go through the official API (`assess/ebay_link.py`).
 - `model_notes.py`: sourced weak spots for Kev's models (Cayman, GT86/BRZ, MX-5 NA/NB, Clio RS 2.0, M140i, and
   Megane RS Mk2/Mk3, which only matches when the DVSA model names the RS), limited by year/engine size; amber when the car's
   own MOT defects match the note's pattern. Review new notes with Kev before adding; cite the source.
@@ -153,7 +155,10 @@ The workflow still runs every 2 hours (free on a public repo), which keeps the `
 5. Next source: eBay Motors via the official Browse API (waiting on Kev's developer keys; env names
    `EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET`). Plan once approved, in order:
    a. DONE (Oct 2026): listing alerts from `config.json` with photos (see "eBay scraper design").
-   b. eBay links in the assessment bot: item ID -> listing details -> registration from item specifics -> MOT report.
+   b. DONE (Oct 2026): eBay links in the assessment bot (`assess/ebay_link.py`): item number -> Browse
+      `get_item_by_legacy_id` -> listing header (seller, owners, MOT expiry, service history, V5C) -> with a
+      registration (typed with the link, or confirmed in the listing): full MOT report using the listing's claims;
+      without: red flags from the advert text + model weak spots + "ask the seller for the registration".
    c. Repair-cost estimates: typical eBay parts prices for issues the MOT history flags (negotiating figure).
       Parts earn eBay Partner Network commission (vehicles mostly don't), so this is the likeliest income source.
    d. Price vs market from similar live listings (asking prices, not sold; the sold-price Marketplace Insights

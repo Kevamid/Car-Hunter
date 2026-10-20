@@ -165,6 +165,94 @@ class ModelNoteTests(unittest.TestCase):
         self.assertTrue(self.notes(self.car("SUBARU", "BRZ", "2014-06-01", 1998)))
 
 
+class FakeEbay:
+    def __init__(self, detail=None, status=None):
+        self.detail, self.status, self.calls = detail, status, []
+
+    def get(self, path, **params):
+        from utils.ebay_api import EbayApiError
+        self.calls.append(params)
+        if self.status:
+            raise EbayApiError(self.status, "nope")
+        return self.detail
+
+
+def listing(description="", mask=None, seller="BUSINESS", title="2007 Porsche Cayman 2.7 Manual"):
+    aspects = [{"name": "Mileage", "value": "88,500"}, {"name": "Year", "value": "2007"},
+               {"name": "Exterior Colour", "value": "Silver"}, {"name": "Manufacturer", "value": "Porsche"},
+               {"name": "Model", "value": "Cayman"}, {"name": "Engine Size", "value": "2687"},
+               {"name": "Date of 1st Registration", "value": "20070320"},
+               {"name": "Number of Previous Owners", "value": "5"}, {"name": "MOT Expiry", "value": "June 2027"}]
+    if mask:
+        aspects.append({"name": "Reg. Mark", "value": mask})
+    return {"title": title, "price": {"value": "14490.00", "currency": "GBP"}, "description": description,
+            "localizedAspects": aspects, "seller": {"sellerAccountType": seller}}
+
+
+class EbayLinkTests(unittest.TestCase):
+    URL = "https://www.ebay.co.uk/itm/2007-porsche-cayman/316789012345?_trkparms=x"
+
+    def setUp(self):
+        with open(os.path.join(SAMPLES, "sample_cayman_concerns.json"), encoding="utf-8") as f:
+            self.payload = json.load(f)
+        self.looked_up = []
+
+    def lookup(self, reg):
+        self.looked_up.append(reg)
+        return self.payload
+
+    def assess(self, text, ebay):
+        from assess.service import assess_text
+        return assess_text(text, lookup=self.lookup, today=TODAY, ebay=ebay)
+
+    def test_item_id(self):
+        from assess.ebay_link import find_item_id
+        self.assertEqual(find_item_id(self.URL), "316789012345")
+        self.assertEqual(find_item_id("https://www.ebay.co.uk/itm/316789012345"), "316789012345")
+        self.assertIsNone(find_item_id("https://ebay.us/m/AbC123"))
+
+    def test_dealer_plate_in_description(self):
+        ebay = FakeEbay(listing("<p>Reg: <b>SA07 MPL</b>. FSH, 2 keys.</p>", mask="**07 ***"))
+        reply = self.assess(self.URL, ebay)
+        self.assertEqual(ebay.calls, [{"legacy_item_id": "316789012345"}])
+        self.assertEqual(self.looked_up, ["SA07MPL"])
+        self.assertIn("eBay listing: 2007 Porsche Cayman 2.7 Manual · £14,490", reply)
+        self.assertIn("Dealer · 5 previous owners · MOT to June 2027", reply)
+        self.assertIn("Registration (found in the listing): SA07MPL", reply)
+        self.assertIn("Advert says silver, the record says blue", reply)   # claims taken from the listing
+
+    def test_plate_must_fit_the_mask(self):
+        ebay = FakeEbay(listing("Part-ex welcome, see also our AB65 XYZ", mask="**07 ***"))
+        reply = self.assess(self.URL, ebay)
+        self.assertEqual(self.looked_up, [])
+        self.assertIn("doesn't show the registration", reply)
+
+    def test_no_mask_needs_reg_context(self):
+        from assess.ebay_link import registration_from_listing
+        css = "<style>.x{id:AB12CDE}</style><script>var k='XY65ZZZ'</script>"
+        self.assertIsNone(registration_from_listing(listing(css + "<p>Great car, FSH</p>")))   # code tokens ignored
+        self.assertIsNone(registration_from_listing(listing("Ref LK09 ABC in stock")))         # no "reg" before it
+        self.assertEqual(registration_from_listing(listing(css + "<p>Registration: LK09 ABC</p>")), "LK09ABC")
+        self.assertIsNone(registration_from_listing(listing("Reg LK09 ABC, was reg KX07 DEF")))  # two plates: ambiguous
+
+    def test_private_listing_without_plate(self):
+        ebay = FakeEbay(listing("Lovely car, Cat N repaired, PX to clear", seller="INDIVIDUAL"))
+        reply = self.assess(self.URL, ebay)
+        self.assertIn("Private seller", reply)
+        self.assertIn("Ask the seller for it", reply)
+        self.assertIn("write-off category", reply)          # red flag from the description
+        self.assertIn("Porsche Cayman (987) weak spot", reply)  # model notes from eBay's own specifics
+
+    def test_typed_registration_wins(self):
+        ebay = FakeEbay(listing("Reg SA07 MPL", mask="**07 ***"))
+        reply = self.assess(f"{self.URL} KX07 ABC", ebay)
+        self.assertEqual(self.looked_up, ["KX07ABC"])
+        self.assertIn("Registration (you sent): KX07ABC", reply)
+
+    def test_ended_listing(self):
+        self.assertIn("may have ended", self.assess(self.URL, FakeEbay(status=404)))
+
+
 class FakeResponse(io.BytesIO):
     def __enter__(self):
         return self
@@ -252,7 +340,7 @@ class BotTests(unittest.TestCase):
     def test_links(self):
         reply = self.handle("https://www.pistonheads.com/buy/listing/12345678")
         self.assertIn("can't open adverts on PistonHeads", reply)
-        self.assertIn("eBay API access", self.handle("https://www.ebay.co.uk/itm/123456789012"))
+        self.assertIn("full eBay listing link", self.handle("https://ebay.us/m/AbC123"))
         self.assertIn("can't open adverts on that site", self.handle("https://example.com/car/AB12CDE-ish"))
         # a registration alongside the link wins; plate-like text inside the link is ignored
         self.assertIn("Verdict:", self.handle("AB12CDE https://www.gumtree.com/p/toyota/x/1803657854"))
