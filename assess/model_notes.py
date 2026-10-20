@@ -93,6 +93,31 @@ MODELS = [
              "Has the dephaser been replaced? Any knocking pulling away?", "ClioSport forum guidance",
              years=(2000, 2006), mot=r"spring"),
     ]),
+    # Only when the MOT model names the RS (e.g. "MEGANE RENAULTSPORT 250"); a plain "MEGANE" gets no notes,
+    # because 2.0 non-RS Meganes (and the GT 220) share the engine size. Check real DVSA model names.
+    Model("Renaultsport Megane", r"renault", r"megane.*(renault ?sport|\br\.?s\b|r26|225|230|250|265|275)", [
+        Note("Cambelt (with pulleys and water pump) is a fiddly job; check it was done on time, roughly every "
+             "72,000 miles or 5–6 years.",
+             "When was the cambelt last changed, and were the pulleys and water pump done too? Is there a receipt?",
+             "evo Renaultsport Megane checkpoints; WhichCar RS265 Trophy guide"),
+        Note("Differential and gearbox bearings wear: listen for a whine, especially in sixth. Leaking "
+             "driveshaft seals can starve the diff.",
+             "Any whine from the gearbox, particularly in sixth? Any oil leaks at the driveshafts?",
+             "evo Renaultsport Megane checkpoints; WhichCar RS265 Trophy guide"),
+        Note("Many have been remapped (an easy 250bhp on the 225); unmodified, well-serviced cars are the safer buy.",
+             "Has it been remapped or modified? Is it insured as such?", "Octane and Rush Megane 225 buying guides"),
+        Note("Hub carrier (wheel) bearings wear on the 225/R26.", "Any rumbling from the wheels at speed?",
+             "evo Renaultsport Megane checkpoints", years=(2004, 2009), mot=r"wheel bearing|hub"),
+        Note("Blocked scuttle and door drains let water under the carpets; keyless entry can be temperamental.",
+             "Any damp under the carpets? Do the keycard and remote locking work every time?",
+             "evo Renaultsport Megane checkpoints; Rush Megane 225 buying guide", years=(2004, 2009)),
+        Note("Creaking at full lock usually means worn lower swivel or ball joints.",
+             "Any creaking on full lock? Have the lower ball joints been replaced?",
+             "WhichCar RS265 Trophy guide", years=(2010, 2016), mot=r"ball joint|swivel"),
+        Note("Check for oil leaks at the top and bottom of the engine.",
+             "Any oil leaks or drips under the car?", "WhichCar RS265 Trophy guide", years=(2010, 2016),
+             mot=r"oil leak|leaking oil"),
+    ]),
     Model("BMW M140i (B58)", r"bmw", r"m ?140", [
         Note("Valve cover gasket and oil filter housing leaks are known, from around 70,000 miles.",
              "Any oil leaks around the valve cover or oil filter housing?",

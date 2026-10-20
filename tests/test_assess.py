@@ -148,6 +148,16 @@ class ModelNoteTests(unittest.TestCase):
         self.assertIn("shows signs of it (2025)", rust.message)
         self.assertEqual(self.notes(self.car("MAZDA", "MX-5", "2010-06-01", 1999)), [])  # NC: no NA/NB notes
 
+    def test_megane_rs_generations(self):
+        mk3 = self.notes(self.car("RENAULT", "MEGANE RENAULTSPORT 250", "2011-05-01", 1998, ["Ball joint has slight play"]))
+        s = " ".join(f.message for f in mk3)
+        self.assertIn("swivel or ball joints", s)
+        self.assertNotIn("Hub carrier", s)                                   # Mk2-only note
+        self.assertEqual(next(f for f in mk3 if "swivel" in f.message).severity, AMBER)
+        mk2 = " ".join(f.message for f in self.notes(self.car("RENAULT", "MEGANE R26", "2008-05-01", 1998)))
+        self.assertIn("Hub carrier", mk2)
+        self.assertEqual(self.notes(self.car("RENAULT", "MEGANE", "2011-05-01", 1998)), [])  # plain Megane: none
+
     def test_only_intended_models(self):
         self.assertEqual(self.notes(self.car("RENAULT", "CLIO", "2008-06-01", 1149)), [])  # not a 2.0 RS
         self.assertTrue(self.notes(self.car("RENAULT", "CLIO RENAULTSPORT", "2008-06-01", 1998)))
