@@ -1,14 +1,20 @@
 """Title matching shared by every scraper."""
 import re
+import unicodedata
+
+
+def _fold(text):
+    """Lower case without accents: "Mégane" -> "megane", so sellers' spellings still match."""
+    return "".join(c for c in unicodedata.normalize("NFKD", str(text).lower()) if not unicodedata.combining(c))
 
 
 def alias_in_text(text, alias):
     """Whole-word match, so 'rs' hits "Clio RS" but not "owners", and '200' hits
     "Clio 200" but not "12000 miles". Spaces/hyphens in the alias are optional."""
-    words = [re.escape(w) for w in re.split(r"[\s\-]+", str(alias).lower()) if w]
+    words = [re.escape(w) for w in re.split(r"[\s\-]+", _fold(alias)) if w]
     if not words:
         return False
-    return re.search(r"(?<![a-z0-9])" + r"[\s\-]*".join(words) + r"(?![a-z0-9])", str(text).lower()) is not None
+    return re.search(r"(?<![a-z0-9])" + r"[\s\-]*".join(words) + r"(?![a-z0-9])", _fold(text)) is not None
 
 
 def any_alias_in_text(text, aliases):
@@ -16,7 +22,7 @@ def any_alias_in_text(text, aliases):
 
 
 def _norm(text):
-    return re.sub(r"[^a-z0-9]", "", str(text).lower())
+    return re.sub(r"[^a-z0-9]", "", _fold(text))
 
 
 def title_matches(title, words, unmatched, model_applied, aliases):

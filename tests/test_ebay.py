@@ -90,6 +90,15 @@ class EbayTests(unittest.TestCase):
                                        "aliases": ["197", "200", "rs", "renaultsport"]})
         self.assertEqual([i["id"] for i in kept], ["1"])
 
+    def test_megane_rs_and_accents(self):
+        results = [summary("1", "Renault Mégane RS 250 Cup", 7500),
+                   summary("2", "2009 Renault Megane Renaultsport R26 230", 6000),
+                   summary("3", "Renault Megane 1.5 dCi Dynamique 5 doors", 3000),   # "doors" must not count as RS
+                   summary("4", "Renault Clio RS 200", 4000)]                       # RS, but not a Megane
+        _, kept = self.fetch(results, {"make": "Renault", "model": "Megane RS", "max_price": 10000,
+                                       "aliases": ["rs", "renaultsport", "r26", "225", "230", "250", "265", "275", "trophy"]})
+        self.assertEqual([i["id"] for i in kept], ["1", "2"])
+
     def test_enrich(self):
         item = enrich(listing_from_summary(summary("1", "Mazda MX5", 1250)), DETAIL)
         self.assertEqual((item["mileage"], item["year"], item["seller_type"], item["location"]),

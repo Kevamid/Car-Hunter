@@ -10,11 +10,6 @@
     "max_price": 15000
   },
   {
-    "make": "Porsche",
-    "model": "Cayman",
-    "max_price": 20000
-  },
-  {
     "make": "Mazda",
     "model": "MX-5",
     "max_price": 10000
@@ -24,5 +19,11 @@
     "model": "Clio Sport",
     "max_price": 5500,
     "aliases": ["197", "200", "rs", "renaultsport", "cup", "trophy"]
+  },
+  {
+    "make": "Renault",
+    "model": "Megane RS",
+    "max_price": 10000,
+    "aliases": ["rs", "renaultsport", "r26", "225", "230", "250", "265", "275", "trophy"]
   }
 ]
