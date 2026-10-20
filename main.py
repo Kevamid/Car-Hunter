@@ -4,7 +4,9 @@ import os
 from dotenv import load_dotenv
 from scrapers.pistonheads import PistonHeadsScraper
 from scrapers.car_and_classic import CarAndClassicScraper
+from scrapers.ebay import EbayScraper
 from utils.db import init_db
+from utils.ebay_api import EbayClient
 
 load_dotenv()
 
@@ -35,10 +37,15 @@ def run_pipeline():
     # Initialize scraper registry.
     # PistonHeads and Car & Classic are PAUSED (Oct 2026): their terms need prior written permission
     # for automated access, which has been requested. Re-enable a scraper only once its site agrees.
+    # eBay uses its official API and runs whenever its keys are set.
     scrapers = [
         # PistonHeadsScraper(),
         # CarAndClassicScraper(),
     ]
+    if EbayClient.configured():
+        scrapers.append(EbayScraper())
+    else:
+        logging.warning("eBay skipped: EBAY_CLIENT_ID / EBAY_CLIENT_SECRET not set.")
     if not scrapers:
         logging.warning("No scrapers enabled (PistonHeads and Car & Classic paused pending permission).")
 

@@ -66,6 +66,24 @@ Same rule as PistonHeads: read embedded JSON, not CSS/card text (the old text-sc
   out of price range, title mismatch, written-off titles (`BaseScraper.is_written_off`).
 - Auctions stay skipped (Kev's decision, Oct 2026).
 
+## eBay scraper design (`scrapers/ebay.py`, official Browse API, ACTIVE)
+The compliant source: eBay's own API, so it is the one scraper enabled in `main.py` (whenever `EBAY_CLIENT_ID` /
+`EBAY_CLIENT_SECRET` are set; Production keyset, account-deletion exemption granted Oct 2026).
+- `utils/ebay_api.py`: client-credentials token (2h) + `X-EBAY-C-MARKETPLACE-ID: EBAY_GB`; shared by alerts and,
+  later, the bot and parts prices. Errors never echo credentials.
+- One search per car: category 9801 (Cars), q = "make model" (with aliases: "make + base word", e.g. "Renault Clio"),
+  `buyingOptions:{FIXED_PRICE|CLASSIFIED_AD|BEST_OFFER}`, price window, `itemLocationCountry:GB`, newest first,
+  200 results. Unfiltered keyword searches return mostly PARTS; the category is what makes it cars.
+- Dropped in code: anything containing AUCTION (incl. Buy It Now + auction), older than 48h by `itemOriginDate`
+  (so relists don't re-alert), out of price, title mismatch (`utils.matching.title_matches`, same rule as C&C),
+  written-off titles (incl. "stolen recovered").
+- First run per search seeds silently (`seeded_searches`); new listings get one `getItem` call for item specifics
+  (mileage, year, owners, MOT expiry, service history, private/dealer) and a Telegram PHOTO alert (falls back to
+  text). Alert-then-save, 15-alert cap, as the others.
+- Registration: eBay masks the "Reg. Mark" specific; dealers usually put the plate in the description, private
+  sellers usually don't (sample of 15, Oct 2026). Matters for eBay links in the assessment bot (plan 5b).
+- GitHub secrets needed: `EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET` (the workflow passes them through).
+
 ## Aliases (both scrapers, `utils/matching.py`)
 Optional `aliases` in a car config are title keywords: a listing must contain at least one as a WHOLE word ("rs"
 matches "Clio RS", not "owners"; "200" matches "Clio 200", not "12000 miles"). Checked against the title (PistonHeads:
@@ -133,8 +151,7 @@ The workflow still runs every 2 hours (free on a public repo), which keeps the `
    Playwright browser to save Actions minutes.
 5. Next source: eBay Motors via the official Browse API (waiting on Kev's developer keys; env names
    `EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET`). Plan once approved, in order:
-   a. Listing alerts from `config.json` (price, aliases, seeding as the other scrapers; fixed-price and
-      classified only, auctions skipped), with the main photo.
+   a. DONE (Oct 2026): listing alerts from `config.json` with photos (see "eBay scraper design").
    b. eBay links in the assessment bot: item ID -> listing details -> registration from item specifics -> MOT report.
    c. Repair-cost estimates: typical eBay parts prices for issues the MOT history flags (negotiating figure).
       Parts earn eBay Partner Network commission (vehicles mostly don't), so this is the likeliest income source.

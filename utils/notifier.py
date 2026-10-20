@@ -37,15 +37,25 @@ def send_telegram(text, chat_id=None, parse_mode="HTML"):
     Never prints the exception text: urllib errors can embed the request URL,
     which contains the bot token.
     """
+    fields = {"text": text}
+    if parse_mode:
+        fields["parse_mode"] = parse_mode
+    return _telegram_post("sendMessage", fields, chat_id)
+
+
+def send_telegram_photo(photo_url, caption, chat_id=None):
+    """Send a photo (by URL) with an HTML caption. Same return values as send_telegram.
+    Telegram captions are limited to 1024 characters, so long captions are trimmed."""
+    return _telegram_post("sendPhoto", {"photo": photo_url, "caption": caption[:1024], "parse_mode": "HTML"}, chat_id)
+
+
+def _telegram_post(method, fields, chat_id=None):
     token = os.getenv("TELEGRAM_BOT_TOKEN")
     chat_id = chat_id or os.getenv("TELEGRAM_CHAT_ID")
     if not token or not chat_id:
         return None
-    fields = {"chat_id": chat_id, "text": text}
-    if parse_mode:
-        fields["parse_mode"] = parse_mode
-    body = urlencode(fields).encode()
-    request = urllib.request.Request(f"https://api.telegram.org/bot{token}/sendMessage", data=body)
+    body = urlencode({"chat_id": chat_id, **fields}).encode()
+    request = urllib.request.Request(f"https://api.telegram.org/bot{token}/{method}", data=body)
     try:
         with urllib.request.urlopen(request, timeout=15) as response:
             return response.status == 200

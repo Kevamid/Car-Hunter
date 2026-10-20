@@ -24,7 +24,7 @@ import time
 from urllib.parse import urlencode
 from playwright.sync_api import sync_playwright
 from scrapers.base import BaseScraper
-from utils.matching import any_alias_in_text
+from utils.matching import title_matches
 from utils.db import is_listing_seen, is_search_seeded, mark_search_seeded, upsert_listing
 from utils.notifier import format_alert, send_telegram
 
@@ -32,10 +32,6 @@ BASE_URL = "https://www.carandclassic.com"
 SOURCE = "Car & Classic"
 KM_TO_MILES = 0.621371
 DATA_PAGE_RE = re.compile(r'<script[^>]*data-page="app"[^>]*>(.*?)</script>', re.S)
-
-
-def _norm(text):
-    return re.sub(r"[^a-z0-9]", "", str(text).lower())
 
 
 def slugify(text):
@@ -213,20 +209,7 @@ class CarAndClassicScraper(BaseScraper):
                          f"model_filter={'site' if model_applied else 'title'} skipped={skipped}")
         return kept
 
-    @staticmethod
-    def _title_matches(title, words, unmatched, model_applied, aliases):
-        """Title check for whatever the site did not filter.
-
-        - aliases given: the title needs one alias as a whole word ("Clio 200", "Clio RS"),
-          plus the base model word if the site applied no model filter at all
-          (so "Megane RS" does not pass for "Clio Sport").
-        - no aliases: every model word the site did not apply must be in the title
-          ("M140i" -> "2017 BMW M140I").
-        """
-        if aliases:
-            base_ok = model_applied or not words or _norm(words[0]) in _norm(title)
-            return base_ok and any_alias_in_text(title, aliases)
-        return all(_norm(w) in _norm(title) for w in unmatched)
+    _title_matches = staticmethod(title_matches)  # shared rule, see utils.matching
 
     @staticmethod
     def _to_db_row(item, car_config):

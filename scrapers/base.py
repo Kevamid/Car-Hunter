@@ -10,7 +10,8 @@ class BaseScraper:
         default_terms = [
             "cat s", "cat n", "cat c", "cat d", "cat a", "cat b",
             "category s", "category n", "category c", "category d",
-            "salvage", "write off", "written off", "write-off", "spares or repair"
+            "salvage", "write off", "written off", "write-off", "spares or repair",
+            "stolen recovered", "stolen and recovered"
         ]
 
         if custom_exclusions:
