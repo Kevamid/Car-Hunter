@@ -142,6 +142,38 @@ Re-enable a scraper ONLY after its site agrees in writing, and follow any condit
 user agent instead of the Chrome one). Checking `robots.txt` is not enough: always read the site's terms too.
 The workflow still runs every 2 hours (free on a public repo), which keeps the `listings-db` artifact from expiring.
 
+## Client service model (agreed 21 Oct 2026)
+1. Client fills in an intake form -> their eBay search is created automatically; Kev reviews it. Other sites are
+   covered compliantly: the CLIENT saves searches on their own accounts (we give them the exact searches), or Kev
+   finds cars by hand and sends links + his own assessment. Never Kev's account monitoring PH/C&C for clients, and
+   never their photos/text (commercial use + redistribution; PH terms are personal, non-commercial).
+2. eBay matches and Kev's manual finds go to a REVIEW QUEUE (Kev approves every car before a client sees it), then to
+   the client on TELEGRAM (decided; WhatsApp only later, and only via Meta's official Cloud API). Offer digests as
+   well as instant alerts. Each car carries price vs market, model weak spots and repair costs.
+3. Client replies with a registration -> MOT-based report (+ model notes + repair costs), reviewed by Kev before it
+   goes out. Before charging: check DVSA MOT API terms for commercial use, privacy notice/ICO fee, and point to a
+   paid provider for write-off/finance/stolen checks.
+System changes this implies: clients, searches (with end dates), delivery channel and the review queue live in the
+DB, not `config.json`; manual finds are added through the bot (eBay link, or another site's link + typed facts).
+
+## Task list (Kev, 20 Oct 2026), in order
+1. DONE (21 Oct 2026): eBay plan step (c), repair-cost estimates (see open item 5c).
+2. Email-alert bot for PistonHeads and Car & Classic (compliant: the sites email Kev; we only read his mailbox):
+   Kev saves searches on each site with email alerts on, sent to a dedicated mailbox -> the pipeline reads new
+   alert emails (IMAP with an app password, or the Gmail API) -> extracts each listing (title, price, link,
+   listing ID) -> same filters, de-duplication and Telegram alerts as eBay.
+   Needs from Kev: the dedicated mailbox + app password (secrets, e.g. `ALERTS_EMAIL`, `ALERTS_APP_PASSWORD`),
+   saved searches on both sites, and a few real alert emails to write each site's parser against.
+   Rules: never open the sites' pages or follow their tracking links automatically; take listing IDs from the
+   link text/URL itself. Alert timing depends on each site's email frequency.
+   Agreed refinements: IMAP + app password (Gmail or Fastmail; NOT the Gmail API, whose testing-mode refresh tokens
+   expire every 7 days; NOT Outlook, which no longer allows app-password IMAP); a separate lightweight workflow every
+   15-30 min (no Playwright); record processed Message-IDs in the DB and never delete mail; a Telegram warning when
+   a site email parses to zero listings (template changed); broad saved searches, strict filtering in our code.
+   Alert emails rarely show the registration, so these are listing alerts, not automatic MOT checks. Keep the
+   permission requests open: if a site agrees, its scraper (richer, faster) runs and email becomes the fallback.
+   Confirm at setup: that Car & Classic offers saved-search email alerts, and each site's alert frequencies.
+
 ## Open items
 1. Done: Car & Classic rewritten (see its section above).
 2. Done: both scrapers apply `aliases` (see "Aliases" below). "sport" was removed from the Clio aliases because it let
@@ -159,8 +191,14 @@ The workflow still runs every 2 hours (free on a public repo), which keeps the `
       `get_item_by_legacy_id` -> listing header (seller, owners, MOT expiry, service history, V5C) -> with a
       registration (typed with the link, or confirmed in the listing): full MOT report using the listing's claims;
       without: red flags from the advert text + model weak spots + "ask the seller for the registration".
-   c. Repair-cost estimates: typical eBay parts prices for issues the MOT history flags (negotiating figure).
-      Parts earn eBay Partner Network commission (vehicles mostly don't), so this is the likeliest income source.
+   c. DONE (Oct 2026): repair-cost estimates (`assess/repairs.py`), added to MOT reports (typed reg and eBay link):
+      latest MOT's advisories (+ fail items if that MOT failed) -> part by wording, front/rear from the text,
+      nearside/offside merged -> eBay UK parts search: category per part, NEW + Buy It Now + UK, compatibility
+      filter `Car Make:<make>;Model:<model>;Cars Year:<year>` (UK names; generic Make/Model/Year is rejected),
+      keyword fallback when eBay doesn't know the fitment (e.g. M140I) -> drop performance parts, wrong axle /
+      front+rear sets, accessories -> median + middle half; < 5 prices = no estimate, < 12 = flagged "rough".
+      Corrosion, leaks, tyres not priced. 7-day cache (`parts_prices` table). Never fails a report.
+      Next: eBay Partner Network affiliate links on parts (likeliest income source; vehicles mostly don't pay).
    d. Price vs market from similar live listings (asking prices, not sold; the sold-price Marketplace Insights
       API is restricted), then deal scoring = price vs market + MOT assessment.
    e. Later: seller-side pricing helper; market trends over time (check the API licence's data-retention and

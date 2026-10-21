@@ -73,8 +73,8 @@ def _miles(test):
 
 
 def _name(value):
-    """'PORSCHE' -> 'Porsche', 'MX-5' and 'GR86' stay as they are."""
-    return " ".join(w.title() if w.isalpha() else w for w in (value or "").split())
+    """'PORSCHE' -> 'Porsche'; 'MX-5', 'GR86' and short initialisms ('BMW', 'MG') stay as they are."""
+    return " ".join(w.title() if w.isalpha() and len(w) > 3 else w for w in (value or "").split())
 
 
 def vehicle_from_api(payload):

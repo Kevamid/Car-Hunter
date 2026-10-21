@@ -11,6 +11,7 @@ from datetime import date, datetime
 
 from assess.checks import check_advert_text, check_model_notes, run_checks
 from assess.parse import PLATE_RE, Advert
+from assess.repairs import add_repairs
 from assess.report import build_report, verdict
 from assess.vehicle import Vehicle, vehicle_from_api
 
@@ -136,7 +137,8 @@ def assess_ebay(item_id, client, lookup, registration=None, today=None):
             vehicle = vehicle_from_api(payload)
             source = "you sent" if registration else "found in the listing"
             header.append(f"Registration ({source}): {found}")
-            return "\n".join(header) + "\n\n" + build_report(vehicle, advert, run_checks(vehicle, advert, today=today))
+            report = build_report(vehicle, advert, run_checks(vehicle, advert, today=today))
+            return "\n".join(header) + "\n\n" + add_repairs(report, vehicle, client)
         header.append(f"Registration {found} has no MOT record; check it with the seller.")
 
     advert = advert_from_listing(detail)

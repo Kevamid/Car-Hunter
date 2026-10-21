@@ -4,6 +4,7 @@ from urllib.parse import urlparse
 
 from assess.checks import run_checks
 from assess.ebay_link import assess_ebay, find_item_id
+from assess.repairs import add_repairs
 from assess.mot import MotApiError, MotClient, normalise_registration
 from assess.parse import parse_advert
 from assess.report import build_report
@@ -83,4 +84,5 @@ def assess_text(text, lookup=api_lookup, today=None, ebay=None):
     if payload is None:
         return f"No MOT record found for {advert.registration}. Check the registration and try again."
     vehicle = vehicle_from_api(payload)
-    return build_report(vehicle, advert, run_checks(vehicle, advert, today=today))
+    report = build_report(vehicle, advert, run_checks(vehicle, advert, today=today))
+    return add_repairs(report, vehicle, ebay or ebay_client())
