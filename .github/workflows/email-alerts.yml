@@ -1,0 +1,53 @@
+name: Email Alerts
+
+# PistonHeads / Car & Classic saved-search alert emails -> Telegram.
+# Lightweight (no browser), so it runs often. It keeps its own database artifact
+# (email-db), separate from the main pipeline's listings-db, so the two never race.
+
+on:
+  # Schedule OFF until the parsers are checked against real alert emails (see CLAUDE.md).
+  # schedule:
+  #   - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: email-alerts
+  cancel-in-progress: false
+
+jobs:
+  email:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Download Previous Database Artifact
+        uses: dawidd6/action-download-artifact@v3
+        with:
+          name: email-db
+          path: data/
+          if_no_artifact_found: ignore
+
+      - name: Install Dependencies
+        run: pip install python-dotenv
+
+      - name: Read Alert Emails
+        env:
+          PYTHONUNBUFFERED: "1"
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          ALERTS_EMAIL: ${{ secrets.ALERTS_EMAIL }}
+          ALERTS_APP_PASSWORD: ${{ secrets.ALERTS_APP_PASSWORD }}
+        run: python -m scrapers.email_alerts
+
+      - name: Upload Current Database Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: email-db
+          path: data/listings.db
+          retention-days: 30

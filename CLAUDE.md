@@ -173,6 +173,25 @@ DB, not `config.json`; manual finds are added through the bot (eBay link, or ano
    Alert emails rarely show the registration, so these are listing alerts, not automatic MOT checks. Keep the
    permission requests open: if a site agrees, its scraper (richer, faster) runs and email becomes the fallback.
    Confirm at setup: that Car & Classic offers saved-search email alerts, and each site's alert frequencies.
+   BUILT (21 Oct 2026), parsers still provisional:
+   - `utils/mailbox.py`: IMAP, INBOX opened READ-ONLY, BODY.PEEK (nothing deleted/moved/marked read); env
+     `ALERTS_EMAIL`, `ALERTS_APP_PASSWORD`, optional `ALERTS_IMAP_HOST` (default imap.gmail.com). Last 3 days,
+     From ending pistonheads.com / carandclassic.com (Gmail forwarding keeps the original From).
+   - `scrapers/email_parsers.py`: never follows links; finds the real listing URL directly or URL-encoded inside
+     tracking redirects; title/price/mileage from text near each link, layout ("details after link" vs "before")
+     decided once per email. Written against SYNTHETIC emails: refine with real ones + add them as test fixtures.
+   - `scrapers/email_alerts.py` (`python -m scrapers.email_alerts`): Message-ID in `processed_emails`; listing must
+     match a config car (title rules, price limit; no price in the email = kept); alert, then save; email marked
+     processed only when all its alerts sent; zero listings -> one Telegram warning; max 20 alerts per run.
+   - `.github/workflows/email-alerts.yml`: every 15 min, only python-dotenv installed, own artifact `email-db`
+     (separate from listings-db, so no race), `concurrency: email-alerts`. Secrets: ALERTS_EMAIL, ALERTS_APP_PASSWORD
+     (both set, in .env and GitHub, 21 Oct 2026; IMAP login verified).
+   - STATUS 21 Oct 2026: the 15-min SCHEDULE IS COMMENTED OUT (manual runs only). Next steps, in order: wait for the
+     first real PistonHeads / Car & Classic alert emails in the new mailbox (empty so far; if alerts go to Kev's
+     personal Gmail he is adding a forwarding filter); inspect them; fix `email_parsers.py`; add them (scrubbed of
+     personal details) as test fixtures; then re-enable the schedule. Kev's saved searches: make/model filters, no
+     keywords; C&C uses plain "Clio" / "Megane" (aliases do the RS filtering); site max prices slightly above
+     config (config limits are enforced in code).
 
 ## Open items
 1. Done: Car & Classic rewritten (see its section above).
