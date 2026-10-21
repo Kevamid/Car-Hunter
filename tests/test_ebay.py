@@ -90,6 +90,14 @@ class EbayTests(unittest.TestCase):
                                        "aliases": ["197", "200", "rs", "renaultsport"]})
         self.assertEqual([i["id"] for i in kept], ["1"])
 
+    def test_alias_numbers_inside_bigger_numbers(self):
+        from utils.matching import alias_in_text
+        self.assertTrue(alias_in_text("Renault Clio 2.0 16v 172", "172"))
+        self.assertTrue(alias_in_text("Clio 182, full history", "182"))
+        self.assertFalse(alias_in_text("Clio 1.5 dCi 172,000 miles", "172"))
+        self.assertFalse(alias_in_text("Clio, 200.5 bhp claimed", "200"))
+        self.assertFalse(alias_in_text("Clio, offers over £1,200", "200"))
+
     def test_megane_rs_and_accents(self):
         results = [summary("1", "Renault Mégane RS 250 Cup", 7500),
                    summary("2", "2009 Renault Megane Renaultsport R26 230", 6000),

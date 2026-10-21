@@ -14,7 +14,9 @@ def alias_in_text(text, alias):
     words = [re.escape(w) for w in re.split(r"[\s\-]+", _fold(alias)) if w]
     if not words:
         return False
-    return re.search(r"(?<![a-z0-9])" + r"[\s\-]*".join(words) + r"(?![a-z0-9])", _fold(text)) is not None
+    # a number glued to ",000" / ".5" or after "1," is part of a bigger number ("172,000 miles", "£1,200")
+    return re.search(r"(?<![a-z0-9])(?<!\d[.,])" + r"[\s\-]*".join(words) + r"(?![a-z0-9])(?![.,]\d)",
+                     _fold(text)) is not None
 
 
 def any_alias_in_text(text, aliases):
