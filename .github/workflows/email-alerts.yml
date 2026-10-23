@@ -5,9 +5,8 @@ name: Email Alerts
 # (email-db), separate from the main pipeline's listings-db, so the two never race.
 
 on:
-  # Schedule OFF until the parsers are checked against real alert emails (see CLAUDE.md).
-  # schedule:
-  #   - cron: '*/15 * * * *'
+  schedule:
+    - cron: '*/15 * * * *'
   workflow_dispatch:
 
 concurrency:

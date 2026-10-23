@@ -68,6 +68,33 @@ class ParserTests(unittest.TestCase):
                                                                         "New cars £", "<p>hello</p>"))
 
 
+FIXTURES = os.path.join(os.path.dirname(__file__), "fixtures")
+
+
+def fixture(name):
+    with open(os.path.join(FIXTURES, name), encoding="utf-8") as f:
+        return f.read()
+
+
+class RealEmailTests(unittest.TestCase):
+    """Real alert emails (Oct 2026), scrubbed: every link replaced, no addresses or personal details."""
+
+    def test_pistonheads(self):
+        listings = parse_alert(fixture("pistonheads_two_listings.html"), "", "PistonHeads")
+        self.assertEqual([(l["id"], l["currency"], l["price_value"]) for l in listings],
+                         [("21245034", "GBP", 13490), ("21242486", "GBP", 19750)])
+        self.assertTrue(listings[0]["title"].startswith("BMW 1 Series 3.0 M140i"))
+        self.assertEqual(listings[0]["url"], "https://www.pistonheads.com/buy/listing/21245034")
+
+    def test_car_and_classic_euro_prices_and_search_criteria(self):
+        listings = parse_alert(fixture("carandclassic_two_listings.html"), "", "Car & Classic")
+        # each car's own price (in euros), NOT the saved search's "Max Price £10,000"
+        self.assertEqual([(l["id"], l["currency"], l["price_value"]) for l in listings],
+                         [("C2219729", "EUR", 7900), ("C2219703", "EUR", 5000)])
+        self.assertEqual(listings[0]["title"], "1993 Mazda MX-5 MK1 NA")
+        self.assertIsNone(match_car(listings[0], CARS))   # euro price = not a UK car: skipped
+
+
 class PipelineTests(unittest.TestCase):
     def setUp(self):
         db.DB_PATH = os.path.join(tempfile.mkdtemp(), "t.db")

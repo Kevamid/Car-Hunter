@@ -18,7 +18,11 @@ SITE_PATTERNS = {
     "Car & Classic": (re.compile(r"https?://(?:www\.)?carandclassic\.com/(?:l|car|la|make-an-offer)/([A-Za-z0-9-]+)", re.I),
                       "https://www.carandclassic.com/l/{}"),
 }
-PRICE_RE = re.compile(r"£\s?(\d{1,3}(?:,\d{3})+|\d{3,6})(?:\.\d{2})?")
+# A car's price, in £ or € (Car & Classic shows European listings in euros). Search-criteria text such as
+# "Max Price £10,000" (C&C) or "Price up to £22,000" (PH) is NOT a car's price: those are removed first.
+PRICE_RE = re.compile(r"([£€])\s?(\d{1,3}(?:,\d{3})+|\d{3,6})(?:\.\d{2})?")
+CRITERIA_RE = re.compile(r"(?:max(?:imum)?\s+price|price\s+(?:up\s+)?to|up\s+to|under|from)\s*[£€]\s?[\d,]+", re.I)
+CURRENCY = {"£": "GBP", "€": "EUR"}
 MILES_RE = re.compile(r"(\d{1,3}(?:,\d{3})+|\d{1,6})\s*(?:miles|mi)\b", re.I)
 
 
@@ -109,14 +113,16 @@ def parse_alert(html, text, site):
         miles = MILES_RE.search(block)
         listings.append({
             "source": site, "id": listing_id, "url": canonical.format(listing_id), "title": title,
-            "price_value": int(price.group(1).replace(",", "")) if price else None,
+            "price_value": int(price.group(2).replace(",", "")) if price else None,
+            "currency": CURRENCY[price.group(1)] if price else None,
             "mileage": int(miles.group(1).replace(",", "")) if miles else None,
         })
     return listings
 
 
 def _join(tokens):
-    return " ".join(t[1] if t[0] == "text" else t[2] for t in tokens)
+    """Text of a run of tokens, minus search-criteria prices ("Max Price £10,000")."""
+    return CRITERIA_RE.sub(" ", " ".join(t[1] if t[0] == "text" else t[2] for t in tokens))
 
 
 def _guess_title(block):

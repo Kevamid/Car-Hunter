@@ -186,10 +186,13 @@ DB, not `config.json`; manual finds are added through the bot (eBay link, or ano
    - `.github/workflows/email-alerts.yml`: every 15 min, only python-dotenv installed, own artifact `email-db`
      (separate from listings-db, so no race), `concurrency: email-alerts`. Secrets: ALERTS_EMAIL, ALERTS_APP_PASSWORD
      (both set, in .env and GitHub, 21 Oct 2026; IMAP login verified).
-   - STATUS 21 Oct 2026: the 15-min SCHEDULE IS COMMENTED OUT (manual runs only). Next steps, in order: wait for the
-     first real PistonHeads / Car & Classic alert emails in the new mailbox (empty so far; if alerts go to Kev's
-     personal Gmail he is adding a forwarding filter); inspect them; fix `email_parsers.py`; add them (scrubbed of
-     personal details) as test fixtures; then re-enable the schedule. Kev's saved searches: make/model filters, no
+   - STATUS 23 Oct 2026: VERIFIED on real alert emails (7 PH, 1 C&C) and the 15-min schedule is ON. Findings:
+     PH alerts give title, price and year, NO mileage; C&C alerts repeat the saved search's "Max Price £10,000"
+     above each car and show each car's own price, in EUR for European cars. The parser removes search-criteria
+     prices ("Max Price", "Price up to"), reads £ and € with a `currency` field, and `match_car` skips non-GBP
+     listings as non-UK (as the old C&C scraper did). Real emails, scrubbed (every link replaced with
+     tracker.invalid/example.invalid, addresses removed, checked for personal words and tokens), are fixtures in
+     `tests/fixtures/` (repo is PUBLIC: scrub any new fixture the same way). Kev's saved searches: make/model filters, no
      keywords; C&C uses plain "Clio" / "Megane" (aliases do the RS filtering); site max prices slightly above
      config (config limits are enforced in code).
 

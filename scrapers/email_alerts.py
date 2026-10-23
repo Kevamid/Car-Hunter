@@ -51,7 +51,10 @@ def mark_processed(message, listings):
 
 
 def match_car(listing, cars):
-    """The config car this listing belongs to, or None (title rules + price limit)."""
+    """The config car this listing belongs to, or None (title rules + price limit). Prices in another
+    currency (Car & Classic shows European cars in euros) mean a non-UK car: skipped, like the scrapers did."""
+    if listing.get("currency") not in (None, "GBP"):
+        return None
     for car in cars:
         model = str(car.get("model") or "")
         if not title_matches(listing["title"], model.split(), model.split(), False, car.get("aliases") or []):
