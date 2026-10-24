@@ -10,7 +10,7 @@ def format_alert(item):
     """Telegram (HTML) message for one listing.
 
     `item` keys: title, price, source, url, and optionally name, mileage (int),
-    transmission, fuel, location, seller_type.
+    transmission, fuel, location, seller_type, market (a price-against-market line).
     """
     esc = lambda value: html.escape(str(value))  # noqa: E731
     facts = []
@@ -23,6 +23,8 @@ def format_alert(item):
         lines.append(" · ".join(facts))
     if where:
         lines.append(f"📍 {where}")
+    if item.get("market"):
+        lines.append(esc(item["market"]))  # price against similar eBay adverts (utils.market)
     if item.get("title") and item["title"].lower() not in (item.get("name") or "").lower():
         lines.append(esc(item["title"][:110]))  # skip when it only repeats the headline
     url = item["url"]

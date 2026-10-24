@@ -240,8 +240,14 @@ DB, not `config.json`; manual finds are added through the bot (eBay link, or ano
       front+rear sets, accessories -> median + middle half; < 5 prices = no estimate, < 12 = flagged "rough".
       Corrosion, leaks, tyres not priced. 7-day cache (`parts_prices` table). Never fails a report.
       Next: eBay Partner Network affiliate links on parts (likeliest income source; vehicles mostly don't pay).
-   d. Price vs market from similar live listings (asking prices, not sold; the sold-price Marketplace Insights
-      API is restricted), then deal scoring = price vs market + MOT assessment.
+   d. DONE (24 Oct 2026): price vs market (`utils/market.py`), on eBay + email alerts (not on duplicate notes) and
+      in MOT reports (typed reg / eBay link). Comparables: one eBay search per config car per day, cached 24h in
+      `market_cache` (UK, no auctions, price >= £500, same title/alias rules, so RS-only for Clio/Megane);
+      narrowed to the car's year +/-1 (then +/-2) and, when the car's title (or MOT engine size) gives one, the same
+      engine size first ("1.5" vs "2.0" MX-5). < 6 comparables or no year (Autotrader emails) = no line; < 10 =
+      flagged "rough". ASKING prices (the sold-price Marketplace Insights API is restricted), mileage not adjusted.
+      Reports match the vehicle to a config car (`config_car_for`) so aliases apply. Never fails an alert/report.
+      Next: deal scoring = price vs market + MOT assessment.
    e. Later: seller-side pricing helper; market trends over time (check the API licence's data-retention and
       caching rules first). Read the eBay API licence with Kev before anything public.
    Other open data parked for later (Kev holding fire, Oct 2026): DVSA bulk MOT data via the MOT API's

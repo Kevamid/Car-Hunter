@@ -17,6 +17,7 @@ from scrapers.base import BaseScraper
 from scrapers.email_parsers import parse_alert
 from utils.db import get_db_connection, init_db, is_listing_seen, upsert_listing
 from utils.dedupe import duplicate_note, find_duplicate, year_from_title
+from utils.market import price_check
 from utils.matching import title_matches
 from utils.notifier import format_alert, send_telegram
 
@@ -68,12 +69,13 @@ def match_car(listing, cars):
 
 
 class EmailAlerts(BaseScraper):
-    def __init__(self, cars, notifier=None, fetch=None, alert_delay_s=1.1):
+    def __init__(self, cars, notifier=None, fetch=None, alert_delay_s=1.1, ebay=None):
         super().__init__("Email alerts")
         self.cars = cars
         self.notifier = notifier or send_telegram
         self.fetch = fetch  # callable(sender_domains, days) -> [Message]; default: the real mailbox
         self.alert_delay_s = alert_delay_s
+        self.ebay = ebay    # eBay client for price-against-market lines; None = no price lines
 
     def run(self):
         """Returns the number of new listings alerted."""
@@ -111,6 +113,7 @@ class EmailAlerts(BaseScraper):
                         "title": listing["title"], "name": listing["title"], "source": site, "url": link,
                         "price": f"£{listing['price_value']:,}" if listing.get("price_value") else "price not in the email",
                         "mileage": listing.get("mileage"),
+                        "market": price_check(self.ebay, car, listing.get("price_value"), year, listing["title"]),
                     }))
                 if outcome is False:
                     complete = False  # Telegram failed: retry this email next run
@@ -143,8 +146,9 @@ def main():
     init_db()
     with open("config.json") as f:
         cars = json.load(f)
+    from utils.ebay_api import EbayClient
     try:
-        count = EmailAlerts(cars).run()
+        count = EmailAlerts(cars, ebay=EbayClient() if EbayClient.configured() else None).run()
     except mailbox.MailboxError as exc:
         logging.error(f"Email alerts failed: {exc}")
         return

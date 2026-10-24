@@ -193,6 +193,9 @@ class EbayLinkTests(unittest.TestCase):
     URL = "https://www.ebay.co.uk/itm/2007-porsche-cayman/316789012345?_trkparms=x"
 
     def setUp(self):
+        import tempfile
+        import utils.db as db
+        db.DB_PATH = os.path.join(tempfile.mkdtemp(), "t.db")  # price checks touch the database
         with open(os.path.join(SAMPLES, "sample_cayman_concerns.json"), encoding="utf-8") as f:
             self.payload = json.load(f)
         self.looked_up = []
