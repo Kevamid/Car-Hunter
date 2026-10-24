@@ -192,7 +192,17 @@ DB, not `config.json`; manual finds are added through the bot (eBay link, or ano
      prices ("Max Price", "Price up to"), reads £ and € with a `currency` field, and `match_car` skips non-GBP
      listings as non-UK (as the old C&C scraper did). Real emails, scrubbed (every link replaced with
      tracker.invalid/example.invalid, addresses removed, checked for personal words and tokens), are fixtures in
-     `tests/fixtures/` (repo is PUBLIC: scrub any new fixture the same way). Kev's saved searches: make/model filters, no
+     `tests/fixtures/` (repo is PUBLIC: scrub any new fixture the same way).
+   - AUTOTRADER added (23 Oct 2026) the same way: Kev's own saved-search alert emails (Autotrader's site is behind
+     Cloudflare and its API is partner-only, so emails are the legitimate route). VERIFIED on a real alert (24 Oct
+     2026), sender `service.autotrader.co.uk`: EVERY link goes through `clicks.autotrader.co.uk` and is encrypted
+     (not decodable to a listing URL), so `parse_autotrader` reads each car's text block after "Your new matched
+     adverts" (title, price, "56000 miles", gearbox, fuel) up to its "View advert" link. De-duplication uses a
+     fingerprint of title + price + mileage (`url` = `autotrader.co.uk/#alert-<fingerprint>`, DB key only); the
+     tracked "View advert" link goes into the Telegram alert for Kev to tap (never followed by us; long links show
+     as "View advert"). The email lists only the first few new cars (e.g. 4 of 12); the rest are behind its
+     "Run search" button. Fixture `tests/fixtures/autotrader_four_listings.html` (scrubbed). Personal alerts only: like
+     PH/C&C, never Kev's Autotrader alerts for paying clients. Kev's saved searches: make/model filters, no
      keywords; C&C uses plain "Clio" / "Megane" (aliases do the RS filtering); site max prices slightly above
      config (config limits are enforced in code).
 

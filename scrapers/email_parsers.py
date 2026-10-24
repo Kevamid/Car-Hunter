@@ -7,6 +7,7 @@ price and mileage come from the text around each listing link.
 FIRST VERSION, written before seeing real alert emails: generic heuristics. Refine each
 site's parser against real samples (and add them as test fixtures) before relying on it.
 """
+import hashlib
 import html as htmllib
 import re
 from html.parser import HTMLParser
@@ -17,6 +18,9 @@ SITE_PATTERNS = {
                     "https://www.pistonheads.com/buy/listing/{}"),
     "Car & Classic": (re.compile(r"https?://(?:www\.)?carandclassic\.com/(?:l|car|la|make-an-offer)/([A-Za-z0-9-]+)", re.I),
                       "https://www.carandclassic.com/l/{}"),
+    # Provisional until a real Autotrader alert email is checked (listing pages are /car-details/<long number>).
+    "Autotrader": (re.compile(r"https?://(?:www\.)?autotrader\.co\.uk/car-details/(\d{10,20})", re.I),
+                   "https://www.autotrader.co.uk/car-details/{}"),
 }
 # A car's price, in £ or € (Car & Classic shows European listings in euros). Search-criteria text such as
 # "Max Price £10,000" (C&C) or "Price up to £22,000" (PH) is NOT a car's price: those are removed first.
@@ -76,6 +80,10 @@ def real_url(href, site, depth=3):
 def parse_alert(html, text, site):
     """[listing dict] from one alert email. Each distinct listing ID becomes one listing;
     its details come from the text between its first link and the next listing's first link."""
+    if site == "Autotrader":
+        listings = parse_autotrader(html)
+        if listings:
+            return listings  # otherwise fall through, in case Autotrader starts using plain listing links
     parser = _Links()
     parser.feed(html or (text or "").replace("\n", " | "))
     tokens = parser.tokens
@@ -118,6 +126,54 @@ def parse_alert(html, text, site):
             "mileage": int(miles.group(1).replace(",", "")) if miles else None,
         })
     return listings
+
+
+def parse_autotrader(html):
+    """Autotrader alert emails (checked on a real one, Oct 2026). Every link goes through Autotrader's
+    click tracker (clicks.autotrader.co.uk), encrypted, so the listing URL is NOT available. Each car
+    is a block of text after "Your new matched adverts" (title, price, "56000 miles", gearbox, fuel)
+    ending in a "View advert" link. We keep that tracker link for KEV to tap (never followed by us) and
+    identify the car by a fingerprint of title + price + mileage, for de-duplication.
+    The email lists only the first few new cars; the rest are behind its "Run search" button."""
+    parser = _Links()
+    parser.feed(html or "")
+    tokens = parser.tokens
+    start = next((i for i, t in enumerate(tokens) if t[0] == "text" and "new matched adverts" in t[1].lower()), None)
+    if start is None:
+        return []
+    listings, block = [], []
+    for token in tokens[start + 1:]:
+        if token[0] == "link" and token[2].strip().lower().startswith("view advert"):
+            listing = _autotrader_listing(block, token[1])
+            if listing:
+                listings.append(listing)
+            block = []
+        elif token[0] == "text":
+            block.append(token[1])
+    return listings
+
+
+def _undouble(text):
+    """'Mazda MX-5 1.8i Mazda MX-5 1.8i' -> 'Mazda MX-5 1.8i' (mobile + desktop copies of the same text)."""
+    text = " ".join(text.split())
+    half = len(text) // 2
+    return text[:half].strip() if len(text) % 2 == 1 and text[:half] == text[half + 1:] else text
+
+
+def _autotrader_listing(texts, link):
+    parts = [_undouble(t) for t in texts if t.strip() not in ("|", "")]
+    title = next((p for p in parts if len(p) > 15 and not PRICE_RE.match(p) and not MILES_RE.search(p)), "")
+    block = " | ".join(parts)
+    price, miles = PRICE_RE.search(block), MILES_RE.search(block)
+    if not title or not price:
+        return None
+    value = int(price.group(2).replace(",", ""))
+    mileage = int(miles.group(1).replace(",", "")) if miles else None
+    fingerprint = hashlib.sha1(f"{title.lower()}|{value}|{mileage}".encode()).hexdigest()[:16]
+    return {"source": "Autotrader", "id": fingerprint,
+            "url": f"https://www.autotrader.co.uk/#alert-{fingerprint}",  # stable de-duplication key only
+            "link": htmllib.unescape(link or ""),  # Autotrader's own tracked "View advert" link, for Kev to tap
+            "title": title, "price_value": value, "currency": CURRENCY[price.group(1)], "mileage": mileage}
 
 
 def _join(tokens):

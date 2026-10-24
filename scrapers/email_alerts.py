@@ -19,7 +19,7 @@ from utils.db import get_db_connection, init_db, is_listing_seen, upsert_listing
 from utils.matching import title_matches
 from utils.notifier import format_alert, send_telegram
 
-SENDERS = {"pistonheads.com": "PistonHeads", "carandclassic.com": "Car & Classic"}
+SENDERS = {"pistonheads.com": "PistonHeads", "carandclassic.com": "Car & Classic", "autotrader.co.uk": "Autotrader"}
 LOOKBACK_DAYS = 3
 MAX_ALERTS_PER_RUN = 20
 
@@ -100,7 +100,8 @@ class EmailAlerts(BaseScraper):
                     complete = False  # leave the email for the next run
                     break
                 outcome = self.notifier(format_alert({
-                    "title": listing["title"], "name": listing["title"], "source": site, "url": listing["url"],
+                    "title": listing["title"], "name": listing["title"], "source": site,
+                    "url": listing.get("link") or listing["url"],  # Autotrader: its own tracked link, for Kev to tap
                     "price": f"£{listing['price_value']:,}" if listing.get("price_value") else "price not in the email",
                     "mileage": listing.get("mileage"),
                 }))

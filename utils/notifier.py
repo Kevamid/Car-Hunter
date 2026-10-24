@@ -25,7 +25,11 @@ def format_alert(item):
         lines.append(f"📍 {where}")
     if item.get("title") and item["title"].lower() not in (item.get("name") or "").lower():
         lines.append(esc(item["title"][:110]))  # skip when it only repeats the headline
-    lines.append(f"{esc(item['source'])}: {item['url']}")
+    url = item["url"]
+    if len(url) > 100:  # e.g. Autotrader's tracked links: show a short link instead of ~400 characters
+        lines.append(f'{esc(item["source"])}: <a href="{html.escape(url, quote=True)}">View advert</a>')
+    else:
+        lines.append(f"{esc(item['source'])}: {url}")
     return "\n".join(lines)
 
 

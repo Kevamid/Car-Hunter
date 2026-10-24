@@ -57,6 +57,14 @@ class ParserTests(unittest.TestCase):
         self.assertEqual([(l["id"], l["price_value"]) for l in listings], [("C2208299", 6750), ("C2177702", 4000)])
         self.assertEqual(listings[0]["url"], "https://www.carandclassic.com/l/C2208299")
 
+    def test_autotrader_provisional(self):
+        html = (f'<a href="{tracked("https://www.autotrader.co.uk/car-details/202610231234567?sort=relevance")}">'
+                f'Toyota GT86 2.0 D-4S Pro</a><p>£12,995</p><p>58,200 miles</p>'
+                f'<a href="https://www.autotrader.co.uk/car-search?make=Toyota">See all results</a>')
+        listings = parse_alert(html, "", "Autotrader")
+        self.assertEqual([(l["id"], l["price_value"], l["mileage"]) for l in listings], [("202610231234567", 12995, 58200)])
+        self.assertEqual(listings[0]["url"], "https://www.autotrader.co.uk/car-details/202610231234567")
+
     def test_no_listings(self):
         self.assertEqual(parse_alert("<p>Your password was changed</p>", "", "PistonHeads"), [])
 
@@ -93,6 +101,41 @@ class RealEmailTests(unittest.TestCase):
                          [("C2219729", "EUR", 7900), ("C2219703", "EUR", 5000)])
         self.assertEqual(listings[0]["title"], "1993 Mazda MX-5 MK1 NA")
         self.assertIsNone(match_car(listings[0], CARS))   # euro price = not a UK car: skipped
+
+
+class AutotraderTests(unittest.TestCase):
+    """Real Autotrader alert (Oct 2026), scrubbed. Its links are encrypted click-tracker links, so cars are
+    identified by a fingerprint of title + price + mileage, and the tracked link is passed on for Kev to tap."""
+
+    def setUp(self):
+        db.DB_PATH = os.path.join(tempfile.mkdtemp(), "t.db")
+        db.init_db()
+
+    def test_parses_cars_from_text(self):
+        listings = parse_alert(fixture("autotrader_four_listings.html"), "", "Autotrader")
+        self.assertEqual([(l["price_value"], l["mileage"]) for l in listings],
+                         [(3995, 56000), (5520, 68000), (3000, 52092), (5999, 74548)])
+        self.assertEqual(listings[0]["title"], "Mazda MX-5 1.8i Convertible 2dr Petrol Manual Euro 4 (126 ps)")
+        self.assertEqual(listings[0]["link"], "https://tracker.invalid/click")
+        self.assertTrue(listings[0]["url"].startswith("https://www.autotrader.co.uk/#alert-"))
+        self.assertEqual(len({l["id"] for l in listings}), 4)
+
+    def test_same_car_in_two_emails_alerts_once(self):
+        sent = []
+        email = fixture("autotrader_four_listings.html")
+        messages = [msg(email, sender="alerts@service.autotrader.co.uk", mid="<a1@at>"),
+                    msg(email, sender="alerts@service.autotrader.co.uk", mid="<a2@at>")]
+        count = EmailAlerts(CARS, notifier=lambda t: sent.append(t) or True,
+                            fetch=lambda d, n: messages, alert_delay_s=0).run()
+        self.assertEqual((count, len(sent)), (4, 4))
+        self.assertIn("Autotrader: https://tracker.invalid/click", sent[0])   # short placeholder link: shown as-is
+        self.assertIn("56,000 miles", sent[0])
+
+    def test_long_tracked_link_becomes_view_advert(self):
+        from utils.notifier import format_alert
+        long_link = "https://clicks.autotrader.co.uk/f/a/" + "x" * 300
+        text = format_alert({"title": "Mazda MX-5", "price": "£3,995", "source": "Autotrader", "url": long_link})
+        self.assertIn(f'Autotrader: <a href="{long_link}">View advert</a>', text)
 
 
 class PipelineTests(unittest.TestCase):
