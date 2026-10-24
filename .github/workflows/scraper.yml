@@ -1,9 +1,17 @@
 name: Car Hunter Pipeline
 
+# Every 15 minutes: eBay (official API), then the PistonHeads / Car & Classic / Autotrader alert
+# emails, against ONE database (listings-db), so a car listed on several sites alerts once.
+# No browser is installed: the Playwright scrapers are paused (see CLAUDE.md).
+
 on:
   schedule:
-    - cron: '0 */2 * * *'
+    - cron: '*/15 * * * *'
   workflow_dispatch:
+
+concurrency:
+  group: car-hunter
+  cancel-in-progress: false
 
 jobs:
   scrape:
@@ -25,23 +33,45 @@ jobs:
           path: data/
           if_no_artifact_found: ignore
 
+      # One-off migration (Oct 2026): the email alerts used to keep their own database. Fold its last
+      # artifact in, so nothing is alerted twice. Harmless to repeat; remove once that artifact has expired.
+      - name: Download Legacy Email Database
+        uses: dawidd6/action-download-artifact@v3
+        with:
+          workflow: email-alerts.yml
+          name: email-db
+          path: data/email/
+          search_artifacts: true
+          if_no_artifact_found: ignore
+
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          playwright install chromium --with-deps
 
-      - name: Run Pipeline
+      - name: Merge Legacy Email Database
+        run: python scripts/merge_db.py data/email/listings.db
+
+      - name: Run Pipeline (eBay)
         env:
           PYTHONUNBUFFERED: "1"  # keep print() output in order with the logging lines
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           EBAY_CLIENT_ID: ${{ secrets.EBAY_CLIENT_ID }}
           EBAY_CLIENT_SECRET: ${{ secrets.EBAY_CLIENT_SECRET }}
-        run: |
-          python main.py
+        run: python main.py
+
+      - name: Read Alert Emails
+        env:
+          PYTHONUNBUFFERED: "1"
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          ALERTS_EMAIL: ${{ secrets.ALERTS_EMAIL }}
+          ALERTS_APP_PASSWORD: ${{ secrets.ALERTS_APP_PASSWORD }}
+        run: python -m scrapers.email_alerts
 
       - name: Upload Current Database Artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: listings-db

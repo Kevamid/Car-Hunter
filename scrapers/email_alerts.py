@@ -16,6 +16,7 @@ import time
 from scrapers.base import BaseScraper
 from scrapers.email_parsers import parse_alert
 from utils.db import get_db_connection, init_db, is_listing_seen, upsert_listing
+from utils.dedupe import duplicate_note, find_duplicate, year_from_title
 from utils.matching import title_matches
 from utils.notifier import format_alert, send_telegram
 
@@ -99,12 +100,18 @@ class EmailAlerts(BaseScraper):
                 if sent >= MAX_ALERTS_PER_RUN:
                     complete = False  # leave the email for the next run
                     break
-                outcome = self.notifier(format_alert({
-                    "title": listing["title"], "name": listing["title"], "source": site,
-                    "url": listing.get("link") or listing["url"],  # Autotrader: its own tracked link, for Kev to tap
-                    "price": f"£{listing['price_value']:,}" if listing.get("price_value") else "price not in the email",
-                    "mileage": listing.get("mileage"),
-                }))
+                link = listing.get("link") or listing["url"]  # Autotrader: its own tracked link, for Kev to tap
+                year = year_from_title(listing["title"])
+                duplicate = find_duplicate(car, {"price": listing.get("price_value"), "mileage": listing.get("mileage"),
+                                                 "year": year, "title": listing["title"]}, site)
+                if duplicate:  # already alerted from another site: one line instead of a full alert
+                    outcome = self.notifier(duplicate_note(duplicate, site, listing["title"], listing.get("price_value"), link))
+                else:
+                    outcome = self.notifier(format_alert({
+                        "title": listing["title"], "name": listing["title"], "source": site, "url": link,
+                        "price": f"£{listing['price_value']:,}" if listing.get("price_value") else "price not in the email",
+                        "mileage": listing.get("mileage"),
+                    }))
                 if outcome is False:
                     complete = False  # Telegram failed: retry this email next run
                     continue
@@ -116,7 +123,7 @@ class EmailAlerts(BaseScraper):
                     "make": car.get("make"), "model": car.get("model"), "variant": "", "title": listing["title"],
                     "price_raw": listing.get("price_value") or 0,
                     "price_formatted": f"£{listing['price_value']:,}" if listing.get("price_value") else "",
-                    "mileage": listing.get("mileage"),
+                    "mileage": listing.get("mileage"), "year": year,
                 }):
                     new_total += 1
             if complete:

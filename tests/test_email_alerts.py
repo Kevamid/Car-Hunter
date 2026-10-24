@@ -131,6 +131,17 @@ class AutotraderTests(unittest.TestCase):
         self.assertIn("Autotrader: https://tracker.invalid/click", sent[0])   # short placeholder link: shown as-is
         self.assertIn("56,000 miles", sent[0])
 
+    def test_car_already_alerted_from_ebay_gets_a_note(self):
+        db.upsert_listing({"url": "https://www.ebay.co.uk/itm/111", "source": "eBay", "external_id": "111",
+                           "make": "Mazda", "model": "MX-5", "title": "2006 Mazda MX-5 1.8i Convertible",
+                           "price_raw": 3995, "price_formatted": "£3,995", "mileage": 56100, "year": 2006})
+        sent = []
+        messages = [msg(fixture("autotrader_four_listings.html"), sender="alerts@service.autotrader.co.uk")]
+        EmailAlerts(CARS, notifier=lambda t: sent.append(t) or True, fetch=lambda d, n: messages, alert_delay_s=0).run()
+        self.assertEqual(len(sent), 4)
+        self.assertTrue(sent[0].startswith("↪ Same car as the £3,995 2006 Mazda MX-5 1.8i Convertible (eBay) is also on Autotrader"))
+        self.assertTrue(all(s.startswith("🚗") for s in sent[1:]))
+
     def test_long_tracked_link_becomes_view_advert(self):
         from utils.notifier import format_alert
         long_link = "https://clicks.autotrader.co.uk/f/a/" + "x" * 300

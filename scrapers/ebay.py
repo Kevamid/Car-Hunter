@@ -14,6 +14,7 @@ from datetime import datetime, timedelta, timezone
 
 from scrapers.base import BaseScraper
 from utils.db import is_listing_seen, is_search_seeded, mark_search_seeded, upsert_listing
+from utils.dedupe import duplicate_note, find_duplicate
 from utils.ebay_api import EbayClient
 from utils.matching import title_matches
 from utils.notifier import format_alert, send_telegram, send_telegram_photo
@@ -169,7 +170,12 @@ class EbayScraper(BaseScraper):
                 except Exception as exc:  # details are a bonus; alert on the summary alone
                     self.logger.warning(f"Could not load details for {item['url']}: {type(exc).__name__}")
                 if sent < self.max_alerts:
-                    outcome = self._alert(item)
+                    duplicate = find_duplicate(car, {"price": item["price_value"], "mileage": item["mileage"],
+                                                     "year": item["year"], "title": item["title"]}, SOURCE)
+                    if duplicate:  # already alerted from another site: one line instead of a photo alert
+                        outcome = self.notifier(duplicate_note(duplicate, SOURCE, item["title"], item["price_value"], item["url"]))
+                    else:
+                        outcome = self._alert(item)
                     if outcome is False:
                         continue  # send failed: leave unsaved so the next run retries it
                     if outcome:

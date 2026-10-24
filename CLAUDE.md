@@ -5,7 +5,8 @@ curated mailing list / paid sourcing later. Owner: Kev (Windows, PowerShell, loc
 runner uses Python 3.11).
 
 ## Stack and layout
-Python, Playwright (sync API), SQLite, GitHub Actions (cron every 2 hours + manual `workflow_dispatch`), Telegram alerts.
+Python, Playwright (sync API, scrapers paused), SQLite, GitHub Actions (one workflow every 15 minutes + manual
+`workflow_dispatch`), Telegram alerts.
 
 - `main.py` loads `config.json` (list of cars) and runs every scraper for every car.
 - `scrapers/pistonheads.py` PistonHeads (rewritten; see below).
@@ -15,8 +16,16 @@ Python, Playwright (sync API), SQLite, GitHub Actions (cron every 2 hours + manu
   if the artifact is missing or expired it starts empty: PistonHeads may then alert on up to 15 listings per search).
 - `utils/matching.py` whole-word alias matching shared by the scrapers.
 - `utils/notifier.py` shared Telegram sender and HTML alert format used by every scraper.
-- `.github/workflows/*.yml` "Car Hunter Pipeline": downloads the previous `listings-db` artifact into `data/`, runs
-  `python main.py`, uploads `data/listings.db` again (30 day retention). Secrets: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`.
+- `.github/workflows/scraper.yml` "Car Hunter Pipeline" (since 24 Oct 2026 the ONLY scheduled workflow, every 15 min,
+  `concurrency: car-hunter`): downloads the `listings-db` artifact into `data/`, merges the legacy `email-db` artifact
+  (`scripts/merge_db.py`, idempotent; remove that step and `email-alerts.yml` once it has expired, ~late Nov 2026),
+  runs `python main.py` (eBay) then `python -m scrapers.email_alerts`, uploads `data/listings.db` (30 days). No
+  browser installed. Secrets: TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, EBAY_CLIENT_ID/SECRET, ALERTS_EMAIL/APP_PASSWORD.
+- `utils/dedupe.py`: the same car on several sites alerts once. Same config car + different source + seen within
+  21 days + price within max(£50, 1%) + a confirmation (mileage within 1,000; or same year and title similarity
+  >= 0.4; or title similarity >= 0.7); conflicting mileage/year rules it out. Later sightings send a one-line
+  "↪ Same car ... is also on <site>" note instead of a full alert (eBay and email sources). Email listings store
+  the year from their title. Verified on real data 24 Oct 2026: 4 of 21 email cars matched eBay, no false matches.
 
 ## The contract every scraper must follow
 `main.py` calls `new_count = scraper.scrape(car)` and logs "Found {new_count} new listings". So `scrape()` must itself
@@ -183,9 +192,9 @@ DB, not `config.json`; manual finds are added through the bot (eBay link, or ano
    - `scrapers/email_alerts.py` (`python -m scrapers.email_alerts`): Message-ID in `processed_emails`; listing must
      match a config car (title rules, price limit; no price in the email = kept); alert, then save; email marked
      processed only when all its alerts sent; zero listings -> one Telegram warning; max 20 alerts per run.
-   - `.github/workflows/email-alerts.yml`: every 15 min, only python-dotenv installed, own artifact `email-db`
-     (separate from listings-db, so no race), `concurrency: email-alerts`. Secrets: ALERTS_EMAIL, ALERTS_APP_PASSWORD
-     (both set, in .env and GitHub, 21 Oct 2026; IMAP login verified).
+   - Workflow: since 24 Oct 2026 the email alerts run inside the main 15-min pipeline (shared DB, for cross-site
+     de-duplication); `email-alerts.yml` is retired (no schedule), kept only for the one-off `email-db` merge.
+     Secrets ALERTS_EMAIL, ALERTS_APP_PASSWORD (set in .env and GitHub, 21 Oct 2026; IMAP login verified).
    - STATUS 23 Oct 2026: VERIFIED on real alert emails (7 PH, 1 C&C) and the 15-min schedule is ON. Findings:
      PH alerts give title, price and year, NO mileage; C&C alerts repeat the saved search's "Max Price £10,000"
      above each car and show each car's own price, in EUR for European cars. The parser removes search-criteria
