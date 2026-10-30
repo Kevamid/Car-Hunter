@@ -99,6 +99,9 @@ class RepairTests(unittest.TestCase):
         self.assertIn("Not priced: corrosion", report)
         self.assertTrue(report.endswith("Based on DVSA MOT records."))   # footer stays last
         self.assertEqual(repairs_section([], []), "")
+        only_unpriced = repairs_section([], ["tyres"])
+        self.assertTrue(only_unpriced.startswith("Latest MOT advisories not priced: tyres"))
+        self.assertNotIn("Rough parts prices", only_unpriced)
 
     def test_ebay_failure_leaves_report_unchanged(self):
         v = car([("ADVISORY", "Nearside Front Brake disc worn")])

@@ -25,11 +25,18 @@ class Model:
     model: str                    # regex on the MOT record's model
     notes: list
     cc: tuple = (0, 99999)        # restrict the whole model (e.g. Clio RS = 2.0 litre)
+    fuel: str | None = None       # regex on the MOT fuel type (e.g. petrol, to exclude a 2.0 dCi)
+    confirm: str | None = None    # regex that confirms the variant in the MOT model OR the advert text; without
+                                  # it the notes are shown hedged ("If this is a Renaultsport: ...")
 
     def matches(self, vehicle):
         cc = vehicle.engine_cc or 0
-        return (re.search(self.make, vehicle.make, re.I) and re.search(self.model, vehicle.model, re.I)
-                and (not vehicle.engine_cc or self.cc[0] <= cc <= self.cc[1]))
+        return bool(re.search(self.make, vehicle.make, re.I) and re.search(self.model, vehicle.model, re.I)
+                    and (not vehicle.engine_cc or self.cc[0] <= cc <= self.cc[1])
+                    and (not self.fuel or not vehicle.fuel or re.search(self.fuel, vehicle.fuel, re.I)))
+
+    def confirmed(self, vehicle, advert_text=""):
+        return not self.confirm or bool(re.search(self.confirm, f"{vehicle.model} {advert_text}", re.I))
 
 
 OIL_LEAK = r"oil leak|leaking oil"
@@ -75,7 +82,9 @@ MODELS = [
              "When was the cambelt last changed? Is there a receipt?",
              "Goodwood MX-5 NA buyer's guide", years=(1989, 2005)),
     ]),
-    Model("Renaultsport Clio 2.0 (172/182/197/200)", r"renault", r"clio", cc=(1990, 2010), notes=[
+    # DVSA records RS Clios as plain "CLIO" 1998cc petrol (checked Oct 2026). The RS engine (F4R) is 1998cc;
+    # the non-RS 2.0 16v of the same years (M4R) is 1997cc, so 1998cc petrol identifies the RS.
+    Model("Renaultsport Clio 2.0 (172/182/197/200)", r"renault", r"clio", cc=(1998, 1998), fuel=r"petrol", notes=[
         Note("Cambelt and auxiliary belt (ideally with water pump) every 72,000 miles or 5–6 years; "
              "about £400–600 at a specialist.",
              "When were the cambelt and auxiliary belt last changed? Is there a receipt?",
@@ -93,9 +102,11 @@ MODELS = [
              "Has the dephaser been replaced? Any knocking pulling away?", "ClioSport forum guidance",
              years=(2000, 2006), mot=r"spring"),
     ]),
-    # Only when the MOT model names the RS (e.g. "MEGANE RENAULTSPORT 250"); a plain "MEGANE" gets no notes,
-    # because 2.0 non-RS Meganes (and the GT 220) share the engine size. Check real DVSA model names.
-    Model("Renaultsport Megane", r"renault", r"megane.*(renault ?sport|\br\.?s\b|r26|225|230|250|265|275)", [
+    # DVSA records RS Meganes as plain "MEGANE" 1998cc petrol (checked on real records, Oct 2026), and the
+    # non-RS GT 220 / 2.0 VVT share that engine size: so the RS is CONFIRMED only by an RS marker in the MOT
+    # model or the advert text; otherwise the notes are shown hedged, as information only.
+    Model("Renaultsport Megane", r"renault", r"megane", cc=(1998, 1998), fuel=r"petrol",  # F4R(T); 2.0 VVT M4R = 1997cc
+          confirm=r"renault ?sport|\br\.?s\b|r26|225|230|250|265|275|trophy", notes=[
         Note("Cambelt (with pulleys and water pump) is a fiddly job; check it was done on time, roughly every "
              "72,000 miles or 5–6 years.",
              "When was the cambelt last changed, and were the pulleys and water pump done too? Is there a receipt?",
@@ -105,7 +116,8 @@ MODELS = [
              "Any whine from the gearbox, particularly in sixth? Any oil leaks at the driveshafts?",
              "evo Renaultsport Megane checkpoints; WhichCar RS265 Trophy guide"),
         Note("Many have been remapped (an easy 250bhp on the 225); unmodified, well-serviced cars are the safer buy.",
-             "Has it been remapped or modified? Is it insured as such?", "Octane and Rush Megane 225 buying guides"),
+             "Has it been remapped or modified? Is it insured as such?", "Octane and Rush Megane 225 buying guides",
+             years=(2004, 2009)),
         Note("Hub carrier (wheel) bearings wear on the 225/R26.", "Any rumbling from the wheels at speed?",
              "evo Renaultsport Megane checkpoints", years=(2004, 2009), mot=r"wheel bearing|hub"),
         Note("Blocked scuttle and door drains let water under the carpets; keyless entry can be temperamental.",
@@ -118,7 +130,9 @@ MODELS = [
              "Any oil leaks or drips under the car?", "WhichCar RS265 Trophy guide", years=(2010, 2016),
              mot=r"oil leak|leaking oil"),
     ]),
-    Model("BMW M140i (B58)", r"bmw", r"m ?140", [
+    # DVSA records the M140i as "1 SERIES" (checked on a real one, Oct 2026). Its B58 is 2998cc; the earlier
+    # M135i's N55 is 2979cc, and no other 1 Series is a 3.0 petrol, so engine size identifies it.
+    Model("BMW M140i (B58)", r"bmw", r"m ?140|1 series", cc=(2990, 3005), fuel=r"petrol", notes=[
         Note("Valve cover gasket and oil filter housing leaks are known, from around 70,000 miles.",
              "Any oil leaks around the valve cover or oil filter housing?",
              "Fast Car M140i buyer's guide", mot=OIL_LEAK),
@@ -132,12 +146,13 @@ MODELS = [
 ]
 
 
-def notes_for(vehicle):
-    """(model label, [applicable notes]) for a vehicle, or (None, [])."""
+def notes_for(vehicle, advert_text=""):
+    """(model label, [applicable notes], confirmed) for a vehicle, or (None, [], False).
+    `confirmed` is False when the model needs confirming (e.g. an RS Megane) and nothing confirmed it."""
     year, cc = vehicle.year or 0, vehicle.engine_cc
     for model in MODELS:
         if model.matches(vehicle):
             notes = [n for n in model.notes
                      if n.years[0] <= year <= n.years[1] and (cc is None or n.cc[0] <= cc <= n.cc[1])]
-            return model.label, notes
-    return None, []
+            return model.label, notes, model.confirmed(vehicle, advert_text)
+    return None, [], False

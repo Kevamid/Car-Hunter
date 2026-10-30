@@ -170,6 +170,9 @@ def repairs_section(estimates, unpriced):
     """Plain-text block for the report (empty string when there is nothing to say)."""
     if not estimates and not unpriced:
         return ""
+    if not estimates:  # nothing priceable: just say what wasn't priced, without an empty price heading
+        return (f"Latest MOT advisories not priced: {', '.join(unpriced)} "
+                f"(cost depends on the cause, extent or size; get a garage quote).")
     lines = ["Rough parts prices for the latest MOT advisories (new, eBay UK, before fitting):"]
     lines += [f"• {e.label}: about £{e.mid:,} (most £{e.low:,}–£{e.high:,})"
               + (f", only {e.count} listings, so rough" if e.count < FEW_PRICES else "") for e in estimates]

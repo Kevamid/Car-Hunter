@@ -65,6 +65,18 @@ class VehicleTests(unittest.TestCase):
              "odometerResultType": "UNREADABLE", "dataSource": "DVSA"}]})
         self.assertEqual([t.miles for t in v.tests], [6214, None])
 
+    def test_unreadable_odometer_once_is_info(self):
+        def car(results):
+            return vehicle_from_api({"registrationDate": "2015-01-01", "motTests": [
+                {"completedDate": f"{2018 + i}-01-01T00:00:00Z", "testResult": "PASSED", "expiryDate": f"{2019 + i}-01-01",
+                 "odometerValue": None if r == "U" else str(10000 * (i + 1)), "odometerUnit": "MI",
+                 "odometerResultType": "UNREADABLE" if r == "U" else "READ", "dataSource": "DVSA"}
+                for i, r in enumerate(results)]})
+        once = run_checks(car("RURR"), parse_advert(""), today=TODAY)
+        self.assertTrue(has(once, INFO, "unreadable at one mot"))
+        self.assertFalse(has(once, AMBER, "unreadable"))
+        self.assertTrue(has(run_checks(car("RURU"), parse_advert(""), today=TODAY), AMBER, "unreadable at 2 mots"))
+
 
 class CheckTests(unittest.TestCase):
     def test_problem_car(self):
@@ -156,12 +168,41 @@ class ModelNoteTests(unittest.TestCase):
         self.assertEqual(next(f for f in mk3 if "swivel" in f.message).severity, AMBER)
         mk2 = " ".join(f.message for f in self.notes(self.car("RENAULT", "MEGANE R26", "2008-05-01", 1998)))
         self.assertIn("Hub carrier", mk2)
-        self.assertEqual(self.notes(self.car("RENAULT", "MEGANE", "2011-05-01", 1998)), [])  # plain Megane: none
+        # DVSA's real records say just "MEGANE": notes are hedged, information only, until the advert confirms RS
+        plain = self.car("RENAULT", "MEGANE", "2011-05-01", 1998, ["Ball joint has slight play"])
+        hedged = self.notes(plain)
+        self.assertIn("If this is a Renaultsport Megane", hedged[0].message)
+        self.assertEqual({f.severity for f in hedged}, {INFO})
+        confirmed = [f for f in run_checks(plain, parse_advert("2011 Renault Megane RS 250 Cup"), today=TODAY)
+                     if "weak spot" in f.message]
+        self.assertTrue(any(f.severity == AMBER for f in confirmed))   # the ball joint advisory now counts
+        self.assertEqual(self.notes(self.car("RENAULT", "MEGANE", "2011-05-01", 1461)), [])  # 1.5 dCi: not an RS
+
+    def test_wear_items_and_old_dangerous_defects(self):
+        def car(defects):  # defects: [(year, type, text)]
+            return vehicle_from_api({"registrationDate": "2009-01-01", "motTests": [
+                {"completedDate": f"{y}-03-01T00:00:00Z", "testResult": "PASSED", "expiryDate": f"{y + 1}-03-01",
+                 "odometerValue": str(10000 * (y - 2010)), "odometerUnit": "MI", "odometerResultType": "READ",
+                 "dataSource": "DVSA", "defects": [{"text": tx, "type": ty, "dangerous": ty == "DANGEROUS"}]}
+                for y, ty, tx in defects]})
+        brakes = run_checks(car([(y, "ADVISORY", "Rear Brake pad(s) wearing thin") for y in (2021, 2023, 2025)]),
+                            parse_advert(""), today=TODAY)
+        self.assertTrue(has(brakes, INFO, "brakes noted in 3"))           # wear item: information
+        rust = run_checks(car([(y, "ADVISORY", "Sill corroded") for y in (2021, 2023, 2025)]), parse_advert(""), today=TODAY)
+        self.assertTrue(has(rust, AMBER, "corrosion noted in 3"))
+        for year, severity in ((2025, RED), (2023, AMBER), (2016, INFO)):
+            found = run_checks(car([(year, "DANGEROUS", "Tyre has ply or cords exposed")]), parse_advert(""), today=TODAY)
+            self.assertTrue(has(found, severity, "dangerous defect"), year)
 
     def test_only_intended_models(self):
         self.assertEqual(self.notes(self.car("RENAULT", "CLIO", "2008-06-01", 1149)), [])  # not a 2.0 RS
+        self.assertTrue(self.notes(self.car("RENAULT", "CLIO", "2007-09-01", 1998)))      # how DVSA records an RS 197
+        self.assertEqual(self.notes(self.car("RENAULT", "CLIO", "2007-09-01", 1997)), [])  # non-RS 2.0 16v (M4R)
         self.assertTrue(self.notes(self.car("RENAULT", "CLIO RENAULTSPORT", "2008-06-01", 1998)))
         self.assertTrue(self.notes(self.car("BMW", "M140I", "2017-06-01", 2998)))
+        self.assertTrue(self.notes(self.car("BMW", "1 SERIES", "2018-09-01", 2998)))   # how DVSA really records it
+        self.assertEqual(self.notes(self.car("BMW", "1 SERIES", "2014-09-01", 2979)), [])  # M135i (N55), not B58
+        self.assertEqual(self.notes(self.car("BMW", "1 SERIES", "2018-09-01", 1499)), [])  # 118i
         self.assertTrue(self.notes(self.car("SUBARU", "BRZ", "2014-06-01", 1998)))
 
 

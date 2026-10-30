@@ -24,6 +24,7 @@ THEMES = {
     "exhaust": r"exhaust",
     "tyres": r"\btyre",
 }
+WEAR_THEMES = {"brakes", "tyres"}
 THEME_QUESTIONS = {
     "corrosion": "Can you send close-up photos of the sills, arches and underside? Any rust repairs done?",
     "oil leak": "Has the oil leak been diagnosed and fixed? Any invoices?",
@@ -126,9 +127,11 @@ def check_mileage(vehicle, advert, today):
             out.append(Finding(RED, f"Recorded mileage went DOWN: {m1:,} ({d1:%b %Y}) then {m2:,} ({d2:%b %Y}).",
                                "Why did the mileage go down between MOTs? (Clocking, a replaced clock or a tester typo?)"))
     unread = [t for t in vehicle.tests if t.odometer == "UNREADABLE"]
-    if unread:
-        out.append(Finding(AMBER, f"Odometer recorded as unreadable at {len(unread)} MOT(s).",
+    if len(unread) >= 2 or (unread and out):  # a pattern, or alongside a mileage drop
+        out.append(Finding(AMBER, f"Odometer recorded as unreadable at {len(unread)} MOTs.",
                            "Has the instrument cluster ever been replaced?"))
+    elif unread:  # once on its own is common (dash not powered, display fault on the day)
+        out.append(Finding(INFO, f"Odometer recorded as unreadable at one MOT ({unread[0].date:%b %Y})."))
     if not readings:
         return out
 
@@ -189,10 +192,11 @@ def check_failures(vehicle, advert, today):
     dangerous = [(t, d) for t in vehicle.tests for d in t.defects if d.dangerous or d.type == "DANGEROUS"]
     if dangerous:
         t, d = dangerous[-1]
-        recent = today - t.date <= timedelta(days=730)
-        out.append(Finding(RED if recent else AMBER,
-                           f"Dangerous defect recorded {t.date:%b %Y}: {d.text}.",
-                           "What was done to fix the dangerous defect, and by whom?"))
+        age = today - t.date
+        # recent ones matter; one from years ago (e.g. a bald tyre in 2016) is long fixed
+        severity = RED if age <= timedelta(days=730) else AMBER if age <= timedelta(days=1826) else INFO
+        out.append(Finding(severity, f"Dangerous defect recorded {t.date:%b %Y}: {d.text}.",
+                           "What was done to fix the dangerous defect, and by whom?" if severity != INFO else None))
     return out
 
 
@@ -201,8 +205,10 @@ def check_recurring(vehicle, advert, today):
     for theme, pattern in THEMES.items():
         years = sorted({t.date.year for t in vehicle.tests for d in t.defects if re.search(pattern, d.text, re.I)})
         if len(years) >= 3:
-            out.append(Finding(AMBER, f"{theme.capitalize()} noted in {len(years)} different years "
-                                      f"({years[0]}–{years[-1]}).", THEME_QUESTIONS.get(theme)))
+            # brakes and tyres are wear items: recurring advisories are normal upkeep, not a warning sign
+            severity = INFO if theme in WEAR_THEMES else AMBER
+            out.append(Finding(severity, f"{theme.capitalize()} noted in {len(years)} different years "
+                                         f"({years[0]}–{years[-1]}).", THEME_QUESTIONS.get(theme)))
     return out
 
 
@@ -231,8 +237,13 @@ def check_advert_text(vehicle, advert, today):
 def check_model_notes(vehicle, advert, today):
     """Known weak spots for the model; amber when the car's own MOT history shows the symptom."""
     from assess.model_notes import notes_for
-    label, notes = notes_for(vehicle)
+    label, notes, confirmed = notes_for(vehicle, advert.text if advert else "")
     out = []
+    if notes and not confirmed:  # e.g. DVSA says plain "MEGANE": it may or may not be the RS
+        out.append(Finding(INFO, f"If this is a {label}, these are its known weak spots "
+                                 f"(the official record doesn't say which version it is):",
+                           f"Is it a {label}? The official record just says {vehicle.make} {vehicle.model}."))
+        return out + [Finding(INFO, f"• {note.text}") for note in notes]
     for note in notes:
         years = sorted({t.date.year for t in vehicle.tests for d in t.defects
                         if note.mot and re.search(note.mot, d.text, re.I)})
