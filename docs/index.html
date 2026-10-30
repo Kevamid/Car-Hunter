@@ -194,7 +194,8 @@ function renderSignIn(message) {
 }
 
 /* ---------- data + state ---------- */
-const state = { cars: [], favs: new Map(), q: "", model: "", source: "", max: "", favOnly: false, sort: "new", open: null };
+const state = { cars: [], favs: new Map(), q: "", model: "", source: "", max: "", favOnly: false, showEnded: false, sort: "new", open: null };
+const ended = c => (c.details || {}).listing_status === "ended";
 Object.assign(state, load("carhunter.filters") || {});
 state.open = null;
 
@@ -248,6 +249,7 @@ function filtered() {
     (!state.model || `${c.make} ${c.model}` === state.model) &&
     (!state.source || c.source === state.source) &&
     (!state.favOnly || state.favs.has(c.url)) &&
+    (state.showEnded || !ended(c) || state.favs.has(c.url)) &&
     (c.price == null || c.price <= max) &&
     (!q || `${c.title} ${c.make} ${c.model} ${c.location || ""}`.toLowerCase().includes(q)));
   const by = { new: (a, b) => Date.parse(b.first_seen_at) - Date.parse(a.first_seen_at),
@@ -267,6 +269,7 @@ function renderShell() {
       <div class="filters">
         <input type="search" id="q" placeholder="Search" value="${esc(state.q)}" aria-label="Search">
         <button class="chip" id="fav" aria-pressed="${state.favOnly}">★ Favourites</button>
+        <button class="chip" id="ended" aria-pressed="${state.showEnded}">Show ended</button>
         <select id="model" aria-label="Model"><option value="">All models</option>${models.map(m => `<option ${m === state.model ? "selected" : ""}>${esc(m)}</option>`).join("")}</select>
         <select id="source" aria-label="Site"><option value="">All sites</option>${sources.map(s => `<option ${s === state.source ? "selected" : ""}>${esc(s)}</option>`).join("")}</select>
         <input type="number" id="max" inputmode="numeric" placeholder="Max £" value="${esc(state.max)}" aria-label="Maximum price">
@@ -277,7 +280,7 @@ function renderShell() {
     </div></header>
     <main><div class="wrap"><div class="grid" id="grid"></div></div></main>
     <div class="sheet" id="sheet" role="dialog" aria-modal="true"></div>`;
-  const remember = () => store("carhunter.filters", { q: state.q, model: state.model, source: state.source, max: state.max, favOnly: state.favOnly, sort: state.sort });
+  const remember = () => store("carhunter.filters", { q: state.q, model: state.model, source: state.source, max: state.max, favOnly: state.favOnly, showEnded: state.showEnded, sort: state.sort });
   const on = (id, ev, fn) => document.getElementById(id).addEventListener(ev, e => { fn(e); remember(); renderList(); });
   on("q", "input", e => state.q = e.target.value);
   on("model", "change", e => state.model = e.target.value);
@@ -285,6 +288,7 @@ function renderShell() {
   on("max", "input", e => state.max = e.target.value);
   on("sort", "change", e => state.sort = e.target.value);
   on("fav", "click", e => { state.favOnly = !state.favOnly; e.target.setAttribute("aria-pressed", state.favOnly); });
+  on("ended", "click", e => { state.showEnded = !state.showEnded; e.target.setAttribute("aria-pressed", state.showEnded); });
   document.getElementById("refresh").onclick = loadData;
   document.getElementById("signout").onclick = signOut;
   document.getElementById("grid").addEventListener("click", e => {
@@ -311,7 +315,7 @@ function renderList() {
         <div class="price">${gbp(c.price) || "Price on email"}</div>
         <div class="title">${esc(c.title)}</div>
         <div class="meta">${esc(facts)}${facts ? " · " : ""}${esc(ago(c.first_seen_at))}</div>
-        ${marketBadge(c.market)}${c.duplicate_of ? `<span class="badge plain">Also on another site</span>` : ""}
+        ${ended(c) ? `<span class="badge warn">Ended</span>` : ""}${marketBadge(c.market)}${c.duplicate_of ? `<span class="badge plain">Also on another site</span>` : ""}
       </div></article>`;
   }).join("");
 }
@@ -326,7 +330,7 @@ function renderDetail() {
   if (!c || !sheet) return;
   const imgs = (c.images || []).map(safeUrl).filter(Boolean);
   const dup = c.duplicate_of && state.cars.find(x => x.url === c.duplicate_of);
-  const details = Object.entries(c.details || {}).filter(([k, v]) => v && String(v).length < 80);
+  const details = Object.entries(c.details || {}).filter(([k, v]) => v && k !== "listing_status" && String(v).length < 80);
   const facts = [["Price", gbp(c.price)], ["Mileage", miles(c.mileage)], ["Year", c.year], ["Gearbox", c.transmission],
                  ["Fuel", c.fuel], ["Location", c.location], ["Seller", c.seller_type], ["Site", c.source],
                  ["Found", ago(c.first_seen_at)]].filter(([, v]) => v);
@@ -338,7 +342,7 @@ function renderDetail() {
       ${imgs.length > 1 ? `<button class="navbtn prev" id="prev" aria-label="Previous photo">‹</button><button class="navbtn next" id="next" aria-label="Next photo">›</button>` : ""}
       <div class="counter" id="counter">1 / ${imgs.length}</div></div>` : ""}
     <div class="detail">
-      <div><h2>${esc(c.title)}</h2><div class="price" style="margin-top:4px">${gbp(c.price)}</div>${marketBadge(c.market)}</div>
+      <div><h2>${esc(c.title)}</h2><div class="price" style="margin-top:4px">${gbp(c.price)}</div>${ended(c) ? `<span class="badge warn">Advert ended</span> ` : ""}${marketBadge(c.market)}</div>
       <div class="actions">
         ${safeUrl(c.link || c.url) ? `<a class="primary" href="${esc(c.link || c.url)}" target="_blank" rel="noopener noreferrer">Open advert on ${esc(c.source)}</a>` : ""}
         ${dup && safeUrl(dup.link || dup.url) ? `<a class="secondary" href="${esc(dup.link || dup.url)}" target="_blank" rel="noopener noreferrer">Also on ${esc(dup.source)}</a>` : ""}

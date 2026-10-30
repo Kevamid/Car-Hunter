@@ -47,8 +47,14 @@ Private web dashboard of every car found, with photos, details and favourites.
   description, item details, market line, duplicate link, "Open advert", favourite + note. Tested headless at phone
   size with mocked Supabase (Playwright): no script errors; favourites and notes save.
 - Supabase Auth: Site URL + Redirect URL must be the Pages URL (https://kevamid.github.io/Car-Hunter/).
-- Cars found before 30 Oct have no photos (photos are captured at alert time). eBay API licence: storing listing
-  descriptions/photos for a private personal dashboard; re-read the licence before anything public.
+- Photo backfill (`utils/photo_backfill.py`, workflow step "Fill In Missing Photos"): for cars with `images = []`,
+  eBay via the API (max 60 lookups per run; 404 = `details.listing_status = "ended"`, not retried) and email cars from
+  the alert emails still in the mailbox (30 days), matched by listing URL. Uses `supabase_sync.update_car` (PATCH):
+  an upsert would trip NOT NULL columns. First run 31 Oct: 132 eBay + 26 Autotrader + 67 PH + 9 C&C filled; 40 eBay
+  ended; 78 PH (old scraper era, no email) and 6 C&C have no recoverable photo.
+- The page hides ended adverts by default ("Show ended" chip; favourites always shown) and marks them "Ended".
+- eBay API licence: storing listing descriptions/photos for a private personal dashboard; re-read the licence before
+  anything public.
 
 ## Plans and status (30 Oct 2026)
 - Client service: PARKED (Kev, 26 Oct). Don't build towards it unless he asks; see "Client service model".

@@ -72,6 +72,10 @@ jobs:
         if: always()
         run: python -m utils.supabase_sync
 
+      - name: Fill In Missing Photos (Supabase)
+        if: always()
+        run: python -m utils.photo_backfill
+
       - name: Upload Current Database Artifact
         if: always()
         uses: actions/upload-artifact@v4

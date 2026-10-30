@@ -17,6 +17,7 @@ import json
 import os
 import re
 import urllib.error
+import urllib.parse
 import urllib.request
 
 BATCH = 200
@@ -104,6 +105,22 @@ def push_details(url, *, images=None, description=None, details=None, market=Non
     row = _clean({"url": url, "images": images or None, "description": description, "details": details or None,
                   "market": market, "link": link, "duplicate_of": duplicate_of, **(basics or {})})
     return _post([row], list(row))
+
+
+def update_car(url, fields):
+    """Update columns of a car that already exists (PATCH). Never raises; True on success."""
+    if not configured() or not fields:
+        return False
+    base, key = os.getenv("SUPABASE_URL", "").rstrip("/"), os.getenv("SUPABASE_SERVICE_KEY", "")
+    request = urllib.request.Request(
+        f"{base}/rest/v1/cars?url=eq.{urllib.parse.quote(url, safe='')}", data=json.dumps(fields).encode(),
+        method="PATCH", headers={"apikey": key, "Content-Type": "application/json", "Prefer": "return=minimal"})
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            return 200 <= response.status < 300
+    except Exception as exc:
+        print(f"Supabase update failed: {type(exc).__name__}")
+        return False
 
 
 def text_from_html(fragment, limit=DESCRIPTION_LIMIT):
