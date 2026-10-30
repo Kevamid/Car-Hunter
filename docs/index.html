@@ -29,9 +29,10 @@
   /* top bar + filters */
   header { position: sticky; top: 0; z-index: 5; background: color-mix(in srgb, var(--bg) 88%, transparent);
     backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
-  .bar { display: flex; align-items: center; gap: 12px; padding: 12px 0 8px; }
-  .bar h1 { font-size: 18px; margin: 0; letter-spacing: -.01em; }
-  .bar .count { color: var(--muted); font-size: 13px; }
+  .bar { display: flex; align-items: center; gap: 8px; padding: 12px 0 8px; }
+  .bar h1 { font-size: 18px; margin: 0; letter-spacing: -.01em; white-space: nowrap; }
+  .bar .count { color: var(--muted); font-size: 13px; white-space: nowrap; }
+  .bar button { white-space: nowrap; }
   .bar .spacer { flex: 1; }
   .linkbtn { background: none; border: 0; color: var(--muted); cursor: pointer; padding: 6px; font-size: 13px; }
   .filters { display: flex; gap: 8px; padding: 0 0 12px; overflow-x: auto; scrollbar-width: none; }
@@ -97,6 +98,33 @@
   .secondary { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 11px 16px; cursor: pointer; }
   textarea { width: 100%; min-height: 70px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
   .note-status { color: var(--muted); font-size: 12.5px; }
+
+  /* rich tiles: swipeable photos, all the facts, tap = open the advert */
+  .tph { position: relative; }
+  .tstrip { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; aspect-ratio: 4/3; background: var(--surface-2);
+    scrollbar-width: none; }
+  .tstrip::-webkit-scrollbar { display: none; }
+  .tstrip img { flex: 0 0 100%; width: 100%; height: 100%; object-fit: cover; scroll-snap-align: center; display: block; }
+  .tstrip .none { flex: 1; display: grid; place-items: center; color: var(--muted); font-size: 13px; }
+  .pcount { position: absolute; bottom: 8px; right: 8px; background: rgba(0,0,0,.6); color: #fff; font-size: 11.5px;
+    padding: 2px 8px; border-radius: 999px; pointer-events: none; }
+  .tfacts { display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: 12.5px; color: var(--muted); }
+  .tfacts b { color: var(--text); font-weight: 600; }
+  .tbadges { display: flex; gap: 6px; flex-wrap: wrap; }
+  .tfoot { display: flex; justify-content: space-between; align-items: center; margin-top: 6px; gap: 8px; }
+  .open-link { font-weight: 600; color: var(--accent); font-size: 13.5px; }
+  .info { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 4px 10px; cursor: pointer; font-size: 13px; }
+  .badge.manual { background: var(--accent-soft); color: var(--accent); }
+  .addbtn { background: var(--accent); color: #fff; border: 0; border-radius: 999px; padding: 7px 14px; font-weight: 600; cursor: pointer; }
+
+  /* add-a-car form */
+  .form { display: grid; gap: 12px; }
+  .form label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
+  .form input, .form textarea, .form select { background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+    padding: 10px; color: var(--text); width: 100%; }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .hint { color: var(--muted); font-size: 12.5px; margin: 0; }
+  .danger { background: none; border: 1px solid var(--warn); color: var(--warn); border-radius: 10px; padding: 11px 16px; cursor: pointer; }
 
   /* sign-in */
   .signin { max-width: 380px; margin: 12vh auto 0; padding: 24px; background: var(--surface); border: 1px solid var(--line);
@@ -196,6 +224,7 @@ function renderSignIn(message) {
 /* ---------- data + state ---------- */
 const state = { cars: [], favs: new Map(), q: "", model: "", source: "", max: "", favOnly: false, showEnded: false, sort: "new", open: null };
 const ended = c => (c.details || {}).listing_status === "ended";
+const manual = c => (c.details || {}).added_by === "manual";
 Object.assign(state, load("carhunter.filters") || {});
 state.open = null;
 
@@ -265,7 +294,8 @@ function renderShell() {
   app.innerHTML = `
     <header><div class="wrap">
       <div class="bar"><h1>Car Hunter</h1><span class="count" id="count"></span><span class="spacer"></span>
-        <button class="linkbtn" id="refresh">Refresh</button><button class="linkbtn" id="signout">Sign out</button></div>
+        <button class="addbtn" id="add">+ Add car</button>
+        <button class="linkbtn" id="refresh" aria-label="Refresh" title="Refresh" style="font-size:18px">↻</button><button class="linkbtn" id="signout">Sign out</button></div>
       <div class="filters">
         <input type="search" id="q" placeholder="Search" value="${esc(state.q)}" aria-label="Search">
         <button class="chip" id="fav" aria-pressed="${state.favOnly}">★ Favourites</button>
@@ -291,11 +321,23 @@ function renderShell() {
   on("ended", "click", e => { state.showEnded = !state.showEnded; e.target.setAttribute("aria-pressed", state.showEnded); });
   document.getElementById("refresh").onclick = loadData;
   document.getElementById("signout").onclick = signOut;
-  document.getElementById("grid").addEventListener("click", e => {
-    const star = e.target.closest(".star"); const card = e.target.closest(".card");
+  document.getElementById("add").onclick = openAddForm;
+  const grid = document.getElementById("grid");
+  grid.addEventListener("click", e => {
+    const star = e.target.closest(".star"), info = e.target.closest(".info"), card = e.target.closest(".card");
     if (star) { e.stopPropagation(); toggleFav(star.dataset.url); }
-    else if (card) openDetail(card.dataset.url);
+    else if (info) { e.stopPropagation(); openDetail(info.dataset.url); }
+    else if (card) {  // tapping a tile opens the advert where it's listed
+      const c = state.cars.find(x => x.url === card.dataset.url);
+      const target = c && safeUrl(c.link || c.url);
+      if (target) window.open(target, "_blank", "noopener,noreferrer");
+    }
   });
+  grid.addEventListener("scroll", e => {  // photo counter on each tile's swipeable strip
+    const strip = e.target.closest && e.target.closest(".tstrip"); if (!strip) return;
+    const n = strip.parentElement.querySelector(".pcount");
+    if (n) n.textContent = `${Math.round(strip.scrollLeft / strip.clientWidth) + 1} / ${strip.children.length}`;
+  }, { capture: true, passive: true });
   renderList();
 }
 
@@ -305,17 +347,28 @@ function renderList() {
   document.getElementById("count").textContent = `${list.length} of ${state.cars.length}`;
   if (!list.length) { grid.innerHTML = `<div class="empty">${state.cars.length ? "No cars match these filters." : "No cars yet: new ones appear here as they're found."}</div>`; return; }
   grid.innerHTML = list.map(c => {
-    const img = safeUrl((c.images || [])[0]);
-    const facts = [c.year, miles(c.mileage), c.location].filter(Boolean).join(" · ");
-    return `<article class="card" data-url="${esc(c.url)}">
-      <div class="ph">${img ? `<img src="${esc(img)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : "No photo"}</div>
-      <span class="src">${esc(c.source)}</span>
-      <button class="star" data-url="${esc(c.url)}" aria-label="Favourite" aria-pressed="${state.favs.has(c.url)}">${state.favs.has(c.url) ? "★" : "☆"}</button>
+    const imgs = (c.images || []).map(safeUrl).filter(Boolean);
+    const d = c.details || {};
+    const facts = [["Year", c.year], ["Miles", c.mileage != null ? Number(c.mileage).toLocaleString("en-GB") : null],
+                   ["", c.transmission], ["", c.fuel], ["Owners", d["Number of Previous Owners"]],
+                   ["MOT", d["MOT Expiry"]], ["History", d["Service History Available"]],
+                   ["", c.location], ["", c.seller_type]].filter(([, v]) => v);
+    const dup = c.duplicate_of && state.cars.find(x => x.url === c.duplicate_of);
+    return `<article class="card" data-url="${esc(c.url)}" title="Open the advert on ${esc(c.source)}">
+      <div class="tph">
+        <div class="tstrip">${imgs.length ? imgs.map(u => `<img src="${esc(u)}" alt="" loading="lazy" referrerpolicy="no-referrer">`).join("")
+                                           : `<div class="none">No photo</div>`}</div>
+        ${imgs.length > 1 ? `<span class="pcount">1 / ${imgs.length}</span>` : ""}
+        <span class="src">${esc(c.source)}</span>
+        <button class="star" data-url="${esc(c.url)}" aria-label="Favourite" aria-pressed="${state.favs.has(c.url)}">${state.favs.has(c.url) ? "★" : "☆"}</button>
+      </div>
       <div class="body">
-        <div class="price">${gbp(c.price) || "Price on email"}</div>
+        <div class="price">${gbp(c.price) || "Price not given"}</div>
         <div class="title">${esc(c.title)}</div>
-        <div class="meta">${esc(facts)}${facts ? " · " : ""}${esc(ago(c.first_seen_at))}</div>
-        ${ended(c) ? `<span class="badge warn">Ended</span>` : ""}${marketBadge(c.market)}${c.duplicate_of ? `<span class="badge plain">Also on another site</span>` : ""}
+        <div class="tfacts">${facts.map(([k, v]) => `<span>${k ? esc(k) + " " : ""}<b>${esc(v)}</b></span>`).join("")}</div>
+        <div class="tbadges">${ended(c) ? `<span class="badge warn">Ended</span>` : ""}${marketBadge(c.market)}${manual(c) ? `<span class="badge manual">Added by you</span>` : ""}${dup ? `<span class="badge plain">Also on ${esc(dup.source)}</span>` : ""}</div>
+        <div class="tfoot"><span class="meta">Found ${esc(ago(c.first_seen_at))}</span>
+          <span><button class="info" data-url="${esc(c.url)}" aria-label="More details">ⓘ</button> <span class="open-link">Open advert ↗</span></span></div>
       </div></article>`;
   }).join("");
 }
@@ -330,7 +383,8 @@ function renderDetail() {
   if (!c || !sheet) return;
   const imgs = (c.images || []).map(safeUrl).filter(Boolean);
   const dup = c.duplicate_of && state.cars.find(x => x.url === c.duplicate_of);
-  const details = Object.entries(c.details || {}).filter(([k, v]) => v && k !== "listing_status" && String(v).length < 80);
+  const hidden = ["listing_status", "added_by", "note"];  // internal markers, not listing details
+  const details = Object.entries(c.details || {}).filter(([k, v]) => v && !hidden.includes(k) && String(v).length < 80);
   const facts = [["Price", gbp(c.price)], ["Mileage", miles(c.mileage)], ["Year", c.year], ["Gearbox", c.transmission],
                  ["Fuel", c.fuel], ["Location", c.location], ["Seller", c.seller_type], ["Site", c.source],
                  ["Found", ago(c.first_seen_at)]].filter(([, v]) => v);
@@ -351,12 +405,23 @@ function renderDetail() {
       ${c.market ? `<div class="section"><h3>Price check</h3><div>${esc(c.market)}</div></div>` : ""}
       ${details.length ? `<div class="section"><h3>Listing details</h3><div class="facts">${details.map(([k, v]) => `<div class="fact"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div></div>`).join("")}</div></div>` : ""}
       ${c.description ? `<div class="section"><h3>Description</h3><div class="desc">${esc(c.description)}</div></div>` : ""}
+      ${manual(c) && (c.details || {}).note ? `<div class="section"><h3>Added with this note</h3><div class="desc">${esc(c.details.note)}</div></div>` : ""}
       ${fav ? `<div class="section"><h3>Your note</h3><textarea id="note" placeholder="e.g. rang seller, viewing Saturday">${esc(state.favs.get(c.url))}</textarea>
         <div class="note-status" id="nstat"></div></div>` : ""}
+      ${manual(c) ? `<div class="actions"><button class="danger" id="delete">Delete this car</button></div>` : ""}
     </div>`;
   sheet.classList.add("open"); sheet.scrollTop = 0;
   document.getElementById("back").onclick = () => history.back();
   document.getElementById("dstar").onclick = () => toggleFav(c.url);
+  const del = document.getElementById("delete");
+  if (del) del.onclick = async () => {
+    if (!confirm("Delete this car from your dashboard?")) return;
+    try {
+      await api(`cars?url=eq.${encodeURIComponent(c.url)}`, { method: "DELETE" });
+      state.cars = state.cars.filter(x => x.url !== c.url); state.favs.delete(c.url);
+      history.back(); renderList();
+    } catch (e) { alert("Couldn't delete it. Please try again."); }
+  };
   const slides = document.getElementById("slides");
   if (slides) {
     const counter = document.getElementById("counter");
@@ -376,6 +441,117 @@ function renderDetail() {
       }, 700);
     });
   }
+}
+
+/* ---------- add a car you found yourself ---------- */
+const SITES = [["pistonheads.", "PistonHeads"], ["autotrader.", "Autotrader"], ["carandclassic.", "Car & Classic"],
+               ["ebay.", "eBay"], ["gumtree.", "Gumtree"], ["facebook.", "Facebook"], ["cargurus.", "CarGurus"],
+               ["collectingcars.", "Collecting Cars"], ["carsandbids.", "Cars & Bids"]];
+
+function siteFromUrl(u) {
+  try { const host = new URL(u).hostname.toLowerCase();
+        return (SITES.find(([k]) => host.includes(k)) || [null, host.replace(/^www\./, "")])[1]; }
+  catch (e) { return null; }
+}
+function cleanAdvertUrl(u) {  // same car = same address, whatever tracking bits are on the end
+  const x = new URL(u); return `${x.origin}${x.pathname}`.replace(/\/$/, "");
+}
+function parseAdvertText(text) {
+  const t = String(text || "");
+  const lines = t.split(/\n/).map(s => s.trim()).filter(Boolean);
+  const num = s => Number(String(s).replace(/,/g, ""));
+  const prices = [...t.matchAll(/£\s?(\d{1,3}(?:,\d{3})+|\d{3,6})/g)].map(m => num(m[1])).filter(n => n >= 300);
+  const m = t.match(/(\d{1,3}(?:,\d{3})+|\d{1,6})\s*(k)?\s*(?:miles|mi)\b/i);
+  const year = t.match(/\b(19[6-9]\d|20[0-4]\d)\b/);
+  const gear = t.match(/\b(manual|automatic|auto)\b/i);
+  const fuel = t.match(/\b(petrol|diesel|hybrid|electric)\b/i);
+  const cap = s => s && s[0].toUpperCase() + s.slice(1).toLowerCase();
+  return {
+    title: lines.find(l => /[a-z]/i.test(l) && l.length >= 10 && !/^£/.test(l)) || "",
+    price: prices[0] ?? null,
+    mileage: m ? (m[2] ? Math.round(num(m[1]) * 1000) : num(m[1])) : null,
+    year: year ? Number(year[1]) : null,
+    transmission: gear ? (/auto/i.test(gear[1]) ? "Automatic" : "Manual") : null,
+    fuel: fuel ? cap(fuel[1]) : null,
+  };
+}
+
+function openAddForm() {
+  state.open = "__add__"; history.pushState({ open: "__add__" }, "");
+  const sheet = document.getElementById("sheet");
+  const models = [...new Set(state.cars.map(c => `${c.make} ${c.model}`))].sort();
+  sheet.innerHTML = `
+    <div class="top"><button class="iconbtn" id="back" aria-label="Back">←</button><div class="t">Add a car you found</div></div>
+    <form class="detail form" id="addform">
+      <label>Advert link (required)<input type="url" id="f-link" required placeholder="https://..." inputmode="url"></label>
+      <label>Paste the advert's text (optional): I'll fill in what I can
+        <textarea id="f-text" placeholder="Copy the title, price, mileage, description... from the advert and paste here"></textarea></label>
+      <button type="button" class="secondary" id="f-fill">Fill in from the text</button>
+      <label>Title<input id="f-title" required placeholder="e.g. 2006 Mazda MX-5 2.0 Sport"></label>
+      <label>Car (for filtering)<input id="f-model" list="f-models" placeholder="e.g. Mazda MX-5"><datalist id="f-models">${models.map(m => `<option value="${esc(m)}">`).join("")}</datalist></label>
+      <div class="row2">
+        <label>Price (£)<input id="f-price" type="number" inputmode="numeric" min="0"></label>
+        <label>Mileage<input id="f-miles" type="number" inputmode="numeric" min="0"></label>
+      </div>
+      <div class="row2">
+        <label>Year<input id="f-year" type="number" inputmode="numeric" min="1950" max="2050"></label>
+        <label>Gearbox<select id="f-gear"><option value=""></option><option>Manual</option><option>Automatic</option></select></label>
+      </div>
+      <div class="row2">
+        <label>Fuel<select id="f-fuel"><option value=""></option><option>Petrol</option><option>Diesel</option><option>Hybrid</option><option>Electric</option></select></label>
+        <label>Location<input id="f-loc" placeholder="e.g. Leeds"></label>
+      </div>
+      <label>Photo links (one per line)<textarea id="f-photos" placeholder="On the advert: long-press (or right-click) a photo → Copy image address"></textarea></label>
+      <p class="hint">eBay links fill in their own photos and description within about 15 minutes.</p>
+      <label>Note<textarea id="f-note" placeholder="e.g. seen on a Facebook group, seller is a dealer"></textarea></label>
+      <div class="actions"><button class="primary" type="submit" id="f-save">Add to my dashboard</button></div>
+      <div class="msg" id="f-msg"></div>
+    </form>`;
+  sheet.classList.add("open"); sheet.scrollTop = 0;
+  const $ = id => document.getElementById(id);
+  $("back").onclick = () => history.back();
+  $("f-fill").onclick = () => {
+    const p = parseAdvertText($("f-text").value);
+    if (p.title && !$("f-title").value) $("f-title").value = p.title;
+    if (p.price != null) $("f-price").value = p.price;
+    if (p.mileage != null) $("f-miles").value = p.mileage;
+    if (p.year) $("f-year").value = p.year;
+    if (p.transmission) $("f-gear").value = p.transmission;
+    if (p.fuel) $("f-fuel").value = p.fuel;
+    const guess = models.find(m => m.split(" ").slice(1).join(" ").replace(/[^a-z0-9]/gi, "").length > 1 &&
+      $("f-title").value.replace(/[^a-z0-9]/gi, "").toLowerCase().includes(m.split(" ").slice(1).join("").replace(/[^a-z0-9]/gi, "").toLowerCase()));
+    if (guess && !$("f-model").value) $("f-model").value = guess;
+    $("f-msg").textContent = "Filled in from the text: check it over.";
+  };
+  $("addform").addEventListener("submit", async e => {
+    e.preventDefault();
+    const msg = $("f-msg"), link = $("f-link").value.trim();
+    if (!safeUrl(link)) { msg.textContent = "The link must start with https://"; return; }
+    const url = cleanAdvertUrl(link);
+    if (state.cars.some(c => c.url === url)) { msg.textContent = "That advert is already in your dashboard."; return; }
+    const known = state.cars.find(c => `${c.make} ${c.model}` === $("f-model").value.trim());
+    const [make, ...rest] = $("f-model").value.trim().split(/\s+/);
+    const int = id => $(id).value ? Math.round(Number($(id).value)) : null;
+    const row = {
+      url, link: link !== url ? link : null, source: siteFromUrl(link) || "Other",
+      make: known ? known.make : (make || null), model: known ? known.model : (rest.join(" ") || null),
+      title: $("f-title").value.trim(), price: int("f-price"), mileage: int("f-miles"), year: int("f-year"),
+      transmission: $("f-gear").value || null, fuel: $("f-fuel").value || null, location: $("f-loc").value.trim() || null,
+      images: $("f-photos").value.split(/\s+/).map(safeUrl).filter(Boolean),
+      details: { added_by: "manual", ...($("f-note").value.trim() ? { note: $("f-note").value.trim() } : {}) },
+    };
+    $("f-save").disabled = true; msg.textContent = "Saving...";
+    try {
+      const saved = await api("cars", { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify(row) });
+      state.cars.unshift((saved && saved[0]) || { ...row, first_seen_at: new Date().toISOString() });
+      history.back(); renderShell();
+    } catch (err) {
+      $("f-save").disabled = false;
+      msg.textContent = /40[13]/.test(err.message)
+        ? "The database doesn't allow adding cars yet: run supabase/002_manual_cars.sql in Supabase's SQL Editor (one-off)."
+        : /409/.test(err.message) ? "That advert is already in your dashboard (refresh to see it)." : "Couldn't save it. Please try again.";
+    }
+  });
 }
 
 /* ---------- start ---------- */

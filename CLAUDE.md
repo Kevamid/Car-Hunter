@@ -53,6 +53,15 @@ Private web dashboard of every car found, with photos, details and favourites.
   an upsert would trip NOT NULL columns. First run 31 Oct: 132 eBay + 26 Autotrader + 67 PH + 9 C&C filled; 40 eBay
   ended; 78 PH (old scraper era, no email) and 6 C&C have no recoverable photo.
 - The page hides ended adverts by default ("Show ended" chip; favourites always shown) and marks them "Ended".
+- Tiles (31 Oct): swipeable photos, all facts (year, miles, gearbox, fuel, owners, MOT expiry, service history,
+  location, seller), price-check / ended / manual / "also on" badges. TAPPING A TILE OPENS THE ADVERT (link or url,
+  new tab); the ⓘ button opens the detail sheet (description, big photos, notes).
+- Manual cars ("+ Add car"): advert link (required, stored cleaned as `url` without query/hash, original in `link`),
+  optional pasted advert text auto-fills title/price/mileage/year/gearbox/fuel/model in the browser, photo links,
+  location, note -> inserted from the page with `details.added_by = 'manual'` (+ `details.note`). Site from the link
+  host. Needs `supabase/002_manual_cars.sql` (RLS: allowed users may insert/update/delete ONLY manual rows). Manual
+  eBay links get photos/description from the photo backfill (source "eBay"). Detail sheet has "Delete" for manual
+  cars only. The pipeline never deletes rows; `sync_all` only upserts its own listings.
 - eBay API licence: storing listing descriptions/photos for a private personal dashboard; re-read the licence before
   anything public.
 
