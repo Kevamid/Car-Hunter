@@ -1,0 +1,391 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>Car Hunter</title>
+<style>
+  :root {
+    --bg: #f6f5f2; --surface: #ffffff; --surface-2: #efede8; --text: #1b1b19; --muted: #6b6a65;
+    --line: #dddbd4; --accent: #c2410c; --accent-soft: #fde7da; --good: #15803d; --good-soft: #dcfce7;
+    --warn: #b45309; --warn-soft: #fef3c7; --star: #e3a008; --shadow: 0 1px 2px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.06);
+    --radius: 14px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #121211; --surface: #1c1c1a; --surface-2: #262623; --text: #f1f0ec; --muted: #a3a29b;
+      --line: #33332f; --accent: #fb7a3c; --accent-soft: #3b2216; --good: #4ade80; --good-soft: #14301f;
+      --warn: #fbbf24; --warn-soft: #33290f; --star: #fbbf24; --shadow: none;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; -webkit-font-smoothing: antialiased; }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  a { color: var(--accent); }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 16px; }
+
+  /* top bar + filters */
+  header { position: sticky; top: 0; z-index: 5; background: color-mix(in srgb, var(--bg) 88%, transparent);
+    backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+  .bar { display: flex; align-items: center; gap: 12px; padding: 12px 0 8px; }
+  .bar h1 { font-size: 18px; margin: 0; letter-spacing: -.01em; }
+  .bar .count { color: var(--muted); font-size: 13px; }
+  .bar .spacer { flex: 1; }
+  .linkbtn { background: none; border: 0; color: var(--muted); cursor: pointer; padding: 6px; font-size: 13px; }
+  .filters { display: flex; gap: 8px; padding: 0 0 12px; overflow-x: auto; scrollbar-width: none; }
+  .filters::-webkit-scrollbar { display: none; }
+  .filters input, .filters select { background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+    padding: 8px 10px; min-width: 0; }
+  .filters select { flex: 0 0 auto; min-width: 128px; }
+  .filters input[type=search] { flex: 1 0 150px; }
+  .filters input[type=number] { width: 110px; flex: 0 0 auto; }
+  .chip { flex: 0 0 auto; border: 1px solid var(--line); background: var(--surface); border-radius: 999px;
+    padding: 8px 12px; cursor: pointer; white-space: nowrap; }
+  .chip[aria-pressed=true] { background: var(--text); color: var(--bg); border-color: var(--text); }
+
+  /* grid of cars */
+  main { padding: 16px 0 48px; }
+  .grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+  .card { background: var(--surface); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow);
+    border: 1px solid var(--line); cursor: pointer; display: flex; flex-direction: column; position: relative; }
+  .card .ph { aspect-ratio: 4/3; background: var(--surface-2); display: grid; place-items: center; color: var(--muted); }
+  .card .ph img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .card .body { padding: 10px 12px 12px; display: grid; gap: 4px; }
+  .price { font-size: 19px; font-weight: 700; letter-spacing: -.01em; }
+  .title { font-size: 14px; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .meta { color: var(--muted); font-size: 12.5px; }
+  .badge { display: inline-block; font-size: 12px; padding: 2px 8px; border-radius: 999px; margin-top: 2px; width: fit-content; }
+  .badge.good { background: var(--good-soft); color: var(--good); }
+  .badge.warn { background: var(--warn-soft); color: var(--warn); }
+  .badge.plain { background: var(--surface-2); color: var(--muted); }
+  .star { position: absolute; top: 8px; right: 8px; width: 38px; height: 38px; border-radius: 50%; border: 0;
+    background: rgba(0,0,0,.45); color: #fff; font-size: 20px; cursor: pointer; display: grid; place-items: center; }
+  .star[aria-pressed=true] { color: var(--star); background: rgba(0,0,0,.6); }
+  .src { position: absolute; top: 8px; left: 8px; font-size: 11.5px; font-weight: 600; padding: 3px 8px;
+    border-radius: 999px; background: rgba(0,0,0,.55); color: #fff; }
+  .empty, .loading { text-align: center; color: var(--muted); padding: 48px 16px; }
+
+  /* detail sheet */
+  .sheet { position: fixed; inset: 0; z-index: 20; background: var(--bg); overflow-y: auto; display: none; }
+  .sheet.open { display: block; }
+  .sheet .top { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 8px; padding: 10px 16px;
+    background: color-mix(in srgb, var(--bg) 90%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+  .sheet .top .t { flex: 1; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .iconbtn { border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 8px 12px; cursor: pointer; }
+  .gallery { position: relative; background: #000; }
+  .slides { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; aspect-ratio: 4/3; max-height: 70vh; }
+  .slides::-webkit-scrollbar { display: none; }
+  .slides img { flex: 0 0 100%; width: 100%; height: 100%; object-fit: contain; scroll-snap-align: center; }
+  .counter { position: absolute; bottom: 10px; right: 12px; background: rgba(0,0,0,.6); color: #fff; font-size: 12.5px;
+    padding: 3px 9px; border-radius: 999px; }
+  .navbtn { position: absolute; top: 50%; transform: translateY(-50%); border: 0; width: 40px; height: 40px; border-radius: 50%;
+    background: rgba(0,0,0,.5); color: #fff; font-size: 20px; cursor: pointer; }
+  .navbtn.prev { left: 10px; } .navbtn.next { right: 10px; }
+  @media (hover: none) { .navbtn { display: none; } }
+  .detail { max-width: 760px; margin: 0 auto; padding: 16px; display: grid; gap: 16px; }
+  .detail h2 { margin: 0; font-size: 19px; line-height: 1.3; }
+  .facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+  .fact { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; }
+  .fact .k { color: var(--muted); font-size: 12px; } .fact .v { font-weight: 600; }
+  .section h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 6px; }
+  .desc { white-space: pre-wrap; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+  .actions { display: flex; gap: 10px; flex-wrap: wrap; }
+  .primary { background: var(--accent); color: #fff; border: 0; border-radius: 10px; padding: 11px 16px; font-weight: 600;
+    text-decoration: none; cursor: pointer; }
+  .secondary { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 11px 16px; cursor: pointer; }
+  textarea { width: 100%; min-height: 70px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
+  .note-status { color: var(--muted); font-size: 12.5px; }
+
+  /* sign-in */
+  .signin { max-width: 380px; margin: 12vh auto 0; padding: 24px; background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--radius); box-shadow: var(--shadow); display: grid; gap: 12px; }
+  .signin h1 { margin: 0; font-size: 20px; }
+  .signin input { padding: 11px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); }
+  .signin p { margin: 0; color: var(--muted); }
+  .msg { font-size: 13.5px; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script src="config.js"></script>
+<script>
+"use strict";
+const CFG = window.CAR_HUNTER || {};
+const AUTH_KEY = "carhunter.session";
+const app = document.getElementById("app");
+
+/* ---------- tiny helpers ---------- */
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const gbp = n => n == null ? "" : "£" + Number(n).toLocaleString("en-GB");
+const miles = n => n == null ? null : Number(n).toLocaleString("en-GB") + " miles";
+function ago(iso) {
+  const s = (Date.now() - Date.parse(iso)) / 1000;
+  if (!isFinite(s)) return "";
+  if (s < 3600) return Math.max(1, Math.round(s / 60)) + "m ago";
+  if (s < 86400) return Math.round(s / 3600) + "h ago";
+  return Math.round(s / 86400) + "d ago";
+}
+function store(key, value) { try { value == null ? localStorage.removeItem(key) : localStorage.setItem(key, JSON.stringify(value)); } catch (e) {} }
+function load(key) { try { return JSON.parse(localStorage.getItem(key) || "null"); } catch (e) { return null; } }
+const safeUrl = u => /^https:\/\//i.test(u || "") ? u : null;   // only ever link/load https URLs
+
+/* ---------- auth (Supabase magic link, no library) ---------- */
+let session = load(AUTH_KEY);
+
+function sessionFromHash() {
+  if (!location.hash.includes("access_token")) return null;
+  const p = new URLSearchParams(location.hash.slice(1));
+  history.replaceState(null, "", location.pathname + location.search);
+  return { access_token: p.get("access_token"), refresh_token: p.get("refresh_token"),
+           expires_at: Date.now() / 1000 + Number(p.get("expires_in") || 3600) };
+}
+
+async function refreshIfNeeded() {
+  if (!session) return false;
+  if (session.expires_at - 60 > Date.now() / 1000) return true;
+  const r = await fetch(`${CFG.supabaseUrl}/auth/v1/token?grant_type=refresh_token`, {
+    method: "POST", headers: { apikey: CFG.publishableKey, "Content-Type": "application/json" },
+    body: JSON.stringify({ refresh_token: session.refresh_token }) });
+  if (!r.ok) { signOut(); return false; }
+  const d = await r.json();
+  session = { access_token: d.access_token, refresh_token: d.refresh_token, expires_at: d.expires_at || (Date.now() / 1000 + d.expires_in) };
+  store(AUTH_KEY, session);
+  return true;
+}
+
+async function api(path, opts = {}) {
+  if (!(await refreshIfNeeded())) throw new Error("signed out");
+  const r = await fetch(`${CFG.supabaseUrl}/rest/v1/${path}`, { ...opts, headers: {
+    apikey: CFG.publishableKey, Authorization: `Bearer ${session.access_token}`, "Content-Type": "application/json",
+    ...(opts.headers || {}) } });
+  if (r.status === 401) { signOut(); throw new Error("signed out"); }
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  const text = await r.text();  // saves reply with an empty body ("return=minimal")
+  return text ? JSON.parse(text) : null;
+}
+
+function signOut() { session = null; store(AUTH_KEY, null); renderSignIn(); }
+
+function renderSignIn(message) {
+  app.innerHTML = `
+    <form class="signin" id="signin">
+      <h1>Car Hunter</h1>
+      <p>Sign in with your email. We'll send you a link: tap it on this device.</p>
+      <input type="email" id="email" required autocomplete="email" placeholder="you@example.com" value="${esc(load("carhunter.email") || "")}">
+      <button class="primary" type="submit">Email me a sign-in link</button>
+      <div class="msg" id="msg">${esc(message || "")}</div>
+    </form>`;
+  document.getElementById("signin").addEventListener("submit", async ev => {
+    ev.preventDefault();
+    const email = document.getElementById("email").value.trim();
+    const msg = document.getElementById("msg");
+    store("carhunter.email", email);
+    msg.textContent = "Sending...";
+    const redirect = location.origin + location.pathname;
+    const r = await fetch(`${CFG.supabaseUrl}/auth/v1/otp?redirect_to=${encodeURIComponent(redirect)}`, {
+      method: "POST", headers: { apikey: CFG.publishableKey, "Content-Type": "application/json" },
+      body: JSON.stringify({ email, create_user: true }) });
+    msg.textContent = r.ok ? "Check your email and tap the link (it can take a minute)."
+                           : r.status === 429 ? "Too many attempts: wait a minute and try again." : "Couldn't send the link. Try again shortly.";
+  });
+}
+
+/* ---------- data + state ---------- */
+const state = { cars: [], favs: new Map(), q: "", model: "", source: "", max: "", favOnly: false, sort: "new", open: null };
+Object.assign(state, load("carhunter.filters") || {});
+state.open = null;
+
+async function loadData() {
+  app.innerHTML = `<div class="loading">Loading cars...</div>`;
+  try {
+    const [cars, favs] = await Promise.all([
+      api("cars?select=*&order=first_seen_at.desc&limit=1000"),
+      api("favourites?select=url,note"),
+    ]);
+    state.cars = cars;
+    state.favs = new Map(favs.map(f => [f.url, f.note || ""]));
+    renderShell();
+  } catch (e) {
+    if (String(e.message) !== "signed out") app.innerHTML = `<div class="empty">Couldn't load cars (${esc(e.message)}). Pull to refresh or try again later.</div>`;
+  }
+}
+
+async function toggleFav(url) {
+  const was = state.favs.has(url);
+  was ? state.favs.delete(url) : state.favs.set(url, "");
+  renderList(); if (state.open === url) renderDetail();
+  try {
+    if (was) await api(`favourites?url=eq.${encodeURIComponent(url)}`, { method: "DELETE" });
+    else await api("favourites", { method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
+                                   body: JSON.stringify({ url, note: null }) });
+  } catch (e) {  // undo on failure
+    was ? state.favs.set(url, "") : state.favs.delete(url);
+    renderList(); if (state.open === url) renderDetail();
+    alert("Couldn't save the favourite. Please try again.");
+  }
+}
+
+async function saveNote(url, note) {
+  state.favs.set(url, note);
+  await api("favourites", { method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
+                            body: JSON.stringify({ url, note }) });
+}
+
+/* ---------- views ---------- */
+function marketBadge(line) {
+  if (!line) return "";
+  const m = line.match(/About (£[\d,]+) (below|above)/);
+  if (m) return `<span class="badge ${m[2] === "below" ? "good" : "warn"}">${esc(m[1])} ${m[2]} typical</span>`;
+  return /typical asking price/.test(line) ? `<span class="badge plain">About typical price</span>` : "";
+}
+
+function filtered() {
+  const q = state.q.toLowerCase(), max = Number(state.max) || Infinity;
+  const list = state.cars.filter(c =>
+    (!state.model || `${c.make} ${c.model}` === state.model) &&
+    (!state.source || c.source === state.source) &&
+    (!state.favOnly || state.favs.has(c.url)) &&
+    (c.price == null || c.price <= max) &&
+    (!q || `${c.title} ${c.make} ${c.model} ${c.location || ""}`.toLowerCase().includes(q)));
+  const by = { new: (a, b) => Date.parse(b.first_seen_at) - Date.parse(a.first_seen_at),
+               cheap: (a, b) => (a.price ?? 1e9) - (b.price ?? 1e9),
+               dear: (a, b) => (b.price ?? -1) - (a.price ?? -1),
+               miles: (a, b) => (a.mileage ?? 1e9) - (b.mileage ?? 1e9) }[state.sort];
+  return list.sort(by);
+}
+
+function renderShell() {
+  const models = [...new Set(state.cars.map(c => `${c.make} ${c.model}`))].sort();
+  const sources = [...new Set(state.cars.map(c => c.source))].sort();
+  app.innerHTML = `
+    <header><div class="wrap">
+      <div class="bar"><h1>Car Hunter</h1><span class="count" id="count"></span><span class="spacer"></span>
+        <button class="linkbtn" id="refresh">Refresh</button><button class="linkbtn" id="signout">Sign out</button></div>
+      <div class="filters">
+        <input type="search" id="q" placeholder="Search" value="${esc(state.q)}" aria-label="Search">
+        <button class="chip" id="fav" aria-pressed="${state.favOnly}">★ Favourites</button>
+        <select id="model" aria-label="Model"><option value="">All models</option>${models.map(m => `<option ${m === state.model ? "selected" : ""}>${esc(m)}</option>`).join("")}</select>
+        <select id="source" aria-label="Site"><option value="">All sites</option>${sources.map(s => `<option ${s === state.source ? "selected" : ""}>${esc(s)}</option>`).join("")}</select>
+        <input type="number" id="max" inputmode="numeric" placeholder="Max £" value="${esc(state.max)}" aria-label="Maximum price">
+        <select id="sort" aria-label="Sort">
+          ${[["new","Newest"],["cheap","Cheapest"],["dear","Dearest"],["miles","Lowest miles"]].map(([v, l]) => `<option value="${v}" ${v === state.sort ? "selected" : ""}>${l}</option>`).join("")}
+        </select>
+      </div>
+    </div></header>
+    <main><div class="wrap"><div class="grid" id="grid"></div></div></main>
+    <div class="sheet" id="sheet" role="dialog" aria-modal="true"></div>`;
+  const remember = () => store("carhunter.filters", { q: state.q, model: state.model, source: state.source, max: state.max, favOnly: state.favOnly, sort: state.sort });
+  const on = (id, ev, fn) => document.getElementById(id).addEventListener(ev, e => { fn(e); remember(); renderList(); });
+  on("q", "input", e => state.q = e.target.value);
+  on("model", "change", e => state.model = e.target.value);
+  on("source", "change", e => state.source = e.target.value);
+  on("max", "input", e => state.max = e.target.value);
+  on("sort", "change", e => state.sort = e.target.value);
+  on("fav", "click", e => { state.favOnly = !state.favOnly; e.target.setAttribute("aria-pressed", state.favOnly); });
+  document.getElementById("refresh").onclick = loadData;
+  document.getElementById("signout").onclick = signOut;
+  document.getElementById("grid").addEventListener("click", e => {
+    const star = e.target.closest(".star"); const card = e.target.closest(".card");
+    if (star) { e.stopPropagation(); toggleFav(star.dataset.url); }
+    else if (card) openDetail(card.dataset.url);
+  });
+  renderList();
+}
+
+function renderList() {
+  const grid = document.getElementById("grid"); if (!grid) return;
+  const list = filtered();
+  document.getElementById("count").textContent = `${list.length} of ${state.cars.length}`;
+  if (!list.length) { grid.innerHTML = `<div class="empty">${state.cars.length ? "No cars match these filters." : "No cars yet: new ones appear here as they're found."}</div>`; return; }
+  grid.innerHTML = list.map(c => {
+    const img = safeUrl((c.images || [])[0]);
+    const facts = [c.year, miles(c.mileage), c.location].filter(Boolean).join(" · ");
+    return `<article class="card" data-url="${esc(c.url)}">
+      <div class="ph">${img ? `<img src="${esc(img)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : "No photo"}</div>
+      <span class="src">${esc(c.source)}</span>
+      <button class="star" data-url="${esc(c.url)}" aria-label="Favourite" aria-pressed="${state.favs.has(c.url)}">${state.favs.has(c.url) ? "★" : "☆"}</button>
+      <div class="body">
+        <div class="price">${gbp(c.price) || "Price on email"}</div>
+        <div class="title">${esc(c.title)}</div>
+        <div class="meta">${esc(facts)}${facts ? " · " : ""}${esc(ago(c.first_seen_at))}</div>
+        ${marketBadge(c.market)}${c.duplicate_of ? `<span class="badge plain">Also on another site</span>` : ""}
+      </div></article>`;
+  }).join("");
+}
+
+function openDetail(url) { state.open = url; history.pushState({ open: url }, ""); renderDetail(); }
+function closeDetail() { state.open = null; const s = document.getElementById("sheet"); if (s) { s.classList.remove("open"); s.innerHTML = ""; } }
+window.addEventListener("popstate", () => { if (state.open) closeDetail(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape" && state.open) history.back(); });
+
+function renderDetail() {
+  const c = state.cars.find(x => x.url === state.open); const sheet = document.getElementById("sheet");
+  if (!c || !sheet) return;
+  const imgs = (c.images || []).map(safeUrl).filter(Boolean);
+  const dup = c.duplicate_of && state.cars.find(x => x.url === c.duplicate_of);
+  const details = Object.entries(c.details || {}).filter(([k, v]) => v && String(v).length < 80);
+  const facts = [["Price", gbp(c.price)], ["Mileage", miles(c.mileage)], ["Year", c.year], ["Gearbox", c.transmission],
+                 ["Fuel", c.fuel], ["Location", c.location], ["Seller", c.seller_type], ["Site", c.source],
+                 ["Found", ago(c.first_seen_at)]].filter(([, v]) => v);
+  const fav = state.favs.has(c.url);
+  sheet.innerHTML = `
+    <div class="top"><button class="iconbtn" id="back" aria-label="Back">←</button><div class="t">${esc(c.title)}</div>
+      <button class="iconbtn" id="dstar" aria-pressed="${fav}">${fav ? "★ Saved" : "☆ Save"}</button></div>
+    ${imgs.length ? `<div class="gallery"><div class="slides" id="slides">${imgs.map((u, i) => `<img src="${esc(u)}" alt="Photo ${i + 1}" ${i ? 'loading="lazy"' : ""} referrerpolicy="no-referrer">`).join("")}</div>
+      ${imgs.length > 1 ? `<button class="navbtn prev" id="prev" aria-label="Previous photo">‹</button><button class="navbtn next" id="next" aria-label="Next photo">›</button>` : ""}
+      <div class="counter" id="counter">1 / ${imgs.length}</div></div>` : ""}
+    <div class="detail">
+      <div><h2>${esc(c.title)}</h2><div class="price" style="margin-top:4px">${gbp(c.price)}</div>${marketBadge(c.market)}</div>
+      <div class="actions">
+        ${safeUrl(c.link || c.url) ? `<a class="primary" href="${esc(c.link || c.url)}" target="_blank" rel="noopener noreferrer">Open advert on ${esc(c.source)}</a>` : ""}
+        ${dup && safeUrl(dup.link || dup.url) ? `<a class="secondary" href="${esc(dup.link || dup.url)}" target="_blank" rel="noopener noreferrer">Also on ${esc(dup.source)}</a>` : ""}
+      </div>
+      <div class="facts">${facts.map(([k, v]) => `<div class="fact"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div></div>`).join("")}</div>
+      ${c.market ? `<div class="section"><h3>Price check</h3><div>${esc(c.market)}</div></div>` : ""}
+      ${details.length ? `<div class="section"><h3>Listing details</h3><div class="facts">${details.map(([k, v]) => `<div class="fact"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div></div>`).join("")}</div></div>` : ""}
+      ${c.description ? `<div class="section"><h3>Description</h3><div class="desc">${esc(c.description)}</div></div>` : ""}
+      ${fav ? `<div class="section"><h3>Your note</h3><textarea id="note" placeholder="e.g. rang seller, viewing Saturday">${esc(state.favs.get(c.url))}</textarea>
+        <div class="note-status" id="nstat"></div></div>` : ""}
+    </div>`;
+  sheet.classList.add("open"); sheet.scrollTop = 0;
+  document.getElementById("back").onclick = () => history.back();
+  document.getElementById("dstar").onclick = () => toggleFav(c.url);
+  const slides = document.getElementById("slides");
+  if (slides) {
+    const counter = document.getElementById("counter");
+    slides.addEventListener("scroll", () => { counter.textContent = `${Math.round(slides.scrollLeft / slides.clientWidth) + 1} / ${imgs.length}`; }, { passive: true });
+    const go = d => slides.scrollBy({ left: d * slides.clientWidth, behavior: "smooth" });
+    const p = document.getElementById("prev"), n = document.getElementById("next");
+    if (p) { p.onclick = () => go(-1); n.onclick = () => go(1); }
+  }
+  const note = document.getElementById("note");
+  if (note) {
+    let t;
+    note.addEventListener("input", () => {
+      clearTimeout(t); document.getElementById("nstat").textContent = "Saving...";
+      t = setTimeout(async () => {
+        try { await saveNote(c.url, note.value); document.getElementById("nstat").textContent = "Saved"; }
+        catch (e) { document.getElementById("nstat").textContent = "Couldn't save: try again"; }
+      }, 700);
+    });
+  }
+}
+
+/* ---------- start ---------- */
+(async function start() {
+  if (!CFG.supabaseUrl || !CFG.publishableKey) { app.innerHTML = `<div class="empty">Missing config.js</div>`; return; }
+  const fromLink = sessionFromHash();
+  if (fromLink) { session = fromLink; store(AUTH_KEY, session); }
+  if (location.hash.includes("error_description")) {
+    const p = new URLSearchParams(location.hash.slice(1)); history.replaceState(null, "", location.pathname);
+    return renderSignIn(p.get("error_description").replace(/\+/g, " "));
+  }
+  if (!session) return renderSignIn();
+  loadData();
+})();
+</script>
+</body>
+</html>

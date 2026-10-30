@@ -27,6 +27,38 @@ Python, Playwright (sync API, scrapers paused), SQLite, GitHub Actions (one work
   "↪ Same car ... is also on <site>" note instead of a full alert (eBay and email sources). Email listings store
   the year from their title. Verified on real data 24 Oct 2026: 4 of 21 email cars matched eBay, no false matches.
 
+## Dashboard (built 30 Oct 2026)
+Private web dashboard of every car found, with photos, details and favourites.
+- Data: Supabase (free tier). Schema `supabase/schema.sql` (run once in Supabase's SQL Editor; Kev's email is inserted
+  into `allowed_users` THERE, never in the repo). Tables: `cars` (PK `url` = SQLite clean_url; `link` = what to open,
+  e.g. Autotrader's tracked link; images jsonb, description, details jsonb, market, duplicate_of), `price_history`
+  (not synced yet), `favourites` (url, note), `allowed_users`. Row-level security: only signed-in allowed emails read
+  cars or manage favourites; anonymous/publishable-key requests see nothing (verified).
+- Sync: `utils/supabase_sync.py`. `sync_all()` runs every pipeline run (workflow step "Sync Dashboard") and upserts the
+  BASIC columns of every SQLite listing (PostgREST `on_conflict=url` + `columns=` so extras are never wiped);
+  `push_details()` at alert time adds photos, eBay description (text, style/script stripped) + item specifics, the
+  market line, link and duplicate_of. Env: SUPABASE_URL, SUPABASE_SERVICE_KEY (SECRET key, server only; GitHub
+  secrets + .env). Never raises, never prints the key. Email photos: each site's own photo host only
+  (`email_parsers.PHOTO_HOSTS`), taken from just after the previous car up to this car's first link (going further
+  picked up the NEXT car's photo; checked on real emails: PH 68/71, C&C 15/15, Autotrader 26/26 with a photo).
+- Page: `docs/index.html` (GitHub Pages from /docs), no libraries: Supabase magic-link sign-in and REST via fetch,
+  session in localStorage. `docs/config.js` holds the project URL and the PUBLISHABLE key only (public by design).
+  Grid with filters (search, model, site, max price, favourites, sort), detail view with swipeable photos, facts,
+  description, item details, market line, duplicate link, "Open advert", favourite + note. Tested headless at phone
+  size with mocked Supabase (Playwright): no script errors; favourites and notes save.
+- Supabase Auth: Site URL + Redirect URL must be the Pages URL (https://kevamid.github.io/Car-Hunter/).
+- Cars found before 30 Oct have no photos (photos are captured at alert time). eBay API licence: storing listing
+  descriptions/photos for a private personal dashboard; re-read the licence before anything public.
+
+## Plans and status (30 Oct 2026)
+- Client service: PARKED (Kev, 26 Oct). Don't build towards it unless he asks; see "Client service model".
+- Kev reports written permission from PistonHeads and Car & Classic for a personal scraper (Oct 2026); Autotrader
+  pending. Conditions not yet recorded: ask Kev, record them here, then re-enable. Kev prefers the email alerts for
+  now. Car & Classic's Cloudflare still blocks GitHub regardless of permission.
+- Agreed idea, not built: pass-through email alerts (any saved search alerts by default, no config needed) plus a
+  separate Telegram "control" bot (/searches, /on, /off, /max, /require, /ebay) processed by the 15-min pipeline,
+  which commits config.json changes.
+
 ## The contract every scraper must follow
 `main.py` calls `new_count = scraper.scrape(car)` and logs "Found {new_count} new listings". So `scrape()` must itself
 save new listings to the DB, send the alert, and **return an integer count of new listings** (not a list).
@@ -129,7 +161,19 @@ are checked. `python -m assess AB12CDE --price 8995 --miles 74000 --colour silve
 - `vehicle.py` normalises the response (tests oldest first, km -> miles); `parse.py` extracts plate/price/mileage/
   year/colour/fuel/engine from text; `checks.py` rules -> findings (red/amber/green/info + seller question);
   `report.py` plain-text report (terminal and Telegram); `store.py` caches lookups 24h in `mot_lookups`.
-- Samples in `assess/samples/` are SYNTHETIC, built from the official OpenAPI spec; nothing has hit the real API yet.
+- Samples in `assess/samples/` are SYNTHETIC, built from the official OpenAPI spec. REAL API VERIFIED 26 Oct 2026
+  (Kev's DVSA credentials in .env; the API key is 40 characters, a 39-char copy gave MOTH-FB-03 "invalid"): real
+  responses match the spec and parse cleanly. Calibrated from real data: a single "odometer unreadable" MOT is
+  info (common: dash not powered), amber only if repeated or alongside a mileage drop. Calibrated on 3 cars Kev sent
+  (26 Oct): recurring BRAKE and TYRE advisories are info (wear items), recurring corrosion/oil leak/suspension/
+  steering/exhaust stay amber; a dangerous defect is red within 2 years, amber 2-5 years, info after that.
+  DVSA names an RS Megane just "MEGANE" (1998cc petrol), BMW 123d "123": so `model_notes.Model` has `fuel` and
+  `confirm` (RS markers checked in the MOT model OR the advert text); unconfirmed matches show hedged info-only
+  notes ("If this is a Renaultsport Megane..."). Kev confirmed both Meganes are RS 250s (other plate sites say
+  "Renaultsport" from non-DVSA data). M140i: DVSA says "1 SERIES" 2998cc petrol (B58; the M135i N55 is 2979cc), so
+  it is matched by engine size without hedging. RS Clio: DVSA says "CLIO" 1998cc petrol (EO57YCC, a 197). RS Clio
+  and Megane notes match EXACTLY 1998cc petrol: the RS F4R(T) is 1998cc, the non-RS 2.0 16v / 2.0 VVT (M4R) 1997cc.
+  (The Megane GT 220 is also F4RT 1998cc, hence the Megane's hedged wording without an RS marker.)
 - DVLA Vehicle Enquiry API registration is closed (Oct 2026): tax status, export flag and V5C-issue date are missing
   until it reopens; add them as optional checks keyed on `DVLA_API_KEY`.
 - `service.py`: shared `assess_text()` / `api_lookup()` for the CLI and the bot.

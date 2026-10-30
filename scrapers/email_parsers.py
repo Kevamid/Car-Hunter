@@ -42,6 +42,10 @@ class _Links(HTMLParser):
             self._skip += 1
         elif tag == "a":
             self._href, self._anchor = dict(attrs).get("href"), []
+        elif tag == "img":
+            src = dict(attrs).get("src") or ""
+            if _is_photo(src, dict(attrs)):
+                self.tokens.append(("img", src))
         elif tag in ("br", "p", "div", "tr", "td", "li", "h1", "h2", "h3", "table"):
             self.tokens.append(("text", " | "))
 
@@ -111,10 +115,15 @@ def parse_alert(html, text, site):
         seen.add(listing_id)
         if details_after:  # from its first link up to the next listing's first link
             end = next((h[0] for h in hits[n + 1:] if h[1] != listing_id), len(tokens))
-            block = _join(tokens[i:end])
+            span = tokens[i:end]
         else:              # from just after the previous listing's last link up to this link
             prev = max((h[0] for h in hits[:n] if h[1] != listing_id), default=-1)
-            block = _join(tokens[prev + 1:i + 1])
+            span = tokens[prev + 1:i + 1]
+        block = _join(span)
+        # photos: a car's photo sits INSIDE (just before) its first link, so look from just after the previous
+        # car's last link up to and including this car's first link. Going further picks up the NEXT car's photo.
+        prev_end = max((h[0] for h in hits[:n] if h[1] != listing_id), default=-1)
+        photos = _photos(tokens[prev_end + 1:i + 1], site)
         anchors = [h[2] for h in hits if h[1] == listing_id and len(h[2]) > 8]
         title = max(anchors, key=len) if anchors else _guess_title(block)
         price = PRICE_RE.search(block)
@@ -124,6 +133,7 @@ def parse_alert(html, text, site):
             "price_value": int(price.group(2).replace(",", "")) if price else None,
             "currency": CURRENCY[price.group(1)] if price else None,
             "mileage": int(miles.group(1).replace(",", "")) if miles else None,
+            "images": photos,
         })
     return listings
 
@@ -141,13 +151,17 @@ def parse_autotrader(html):
     start = next((i for i, t in enumerate(tokens) if t[0] == "text" and "new matched adverts" in t[1].lower()), None)
     if start is None:
         return []
-    listings, block = [], []
+    listings, block, photos = [], [], []
     for token in tokens[start + 1:]:
-        if token[0] == "link" and token[2].strip().lower().startswith("view advert"):
+        if token[0] == "img":
+            photos.append(htmllib.unescape(token[1]))
+        elif token[0] == "link" and token[2].strip().lower().startswith("view advert"):
             listing = _autotrader_listing(block, token[1])
             if listing:
+                listing["images"] = list(dict.fromkeys(u for u in photos if _photo_host_ok(u, "Autotrader")))
+            if listing:
                 listings.append(listing)
-            block = []
+            block, photos = [], []
         elif token[0] == "text":
             block.append(token[1])
     return listings
@@ -178,7 +192,32 @@ def _autotrader_listing(texts, link):
 
 def _join(tokens):
     """Text of a run of tokens, minus search-criteria prices ("Max Price £10,000")."""
-    return CRITERIA_RE.sub(" ", " ".join(t[1] if t[0] == "text" else t[2] for t in tokens))
+    return CRITERIA_RE.sub(" ", " ".join(t[1] if t[0] == "text" else t[2] for t in tokens if t[0] != "img"))
+
+
+# Each site's own photo hosts: anything else in an alert email (marketing banners, app badges) is not a car photo.
+PHOTO_HOSTS = {"PistonHeads": ("img.pistonheads.com", "images.pistonheads.com"),
+               "Car & Classic": ("assets.carandclassic.com",), "Autotrader": ("atcdn.co.uk",)}
+
+
+def _photo_host_ok(url, site):
+    host = urlparse(url).netloc.lower()
+    return any(host == h or host.endswith("." + h) for h in PHOTO_HOSTS.get(site, ()))
+
+
+def _photos(tokens, site):
+    return list(dict.fromkeys(u for u in (htmllib.unescape(t[1]) for t in tokens if t[0] == "img")
+                              if _photo_host_ok(u, site)))
+
+
+def _is_photo(src, attrs):
+    """A car photo, not a logo, icon, app badge or 1x1 tracking pixel."""
+    if not src.startswith("http") or re.search(r"logo|icon|badge|pixel|spacer|tracking|open\.|/o\.gif|app-?store|google-?play", src, re.I):
+        return False
+    try:
+        return int(attrs.get("width") or 100) > 40 and int(attrs.get("height") or 100) > 40
+    except ValueError:
+        return True
 
 
 def _guess_title(block):

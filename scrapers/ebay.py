@@ -16,6 +16,7 @@ from scrapers.base import BaseScraper
 from utils.db import is_listing_seen, is_search_seeded, mark_search_seeded, upsert_listing
 from utils.dedupe import duplicate_note, find_duplicate, year_from_title
 from utils.market import price_check
+from utils.supabase_sync import push_details, text_from_html
 from utils.ebay_api import EbayClient
 from utils.matching import title_matches
 from utils.notifier import format_alert, send_telegram, send_telegram_photo
@@ -77,8 +78,21 @@ def enrich(listing, detail):
         "location": location.get("city") or listing["location"],
         "name": listing["title"],
         "extra": " · ".join(x for x in extra if x) or None,
+        # for the dashboard: every photo, the description as text, and the item specifics
+        "images": [u for u in [(detail.get("image") or {}).get("imageUrl")]
+                   + [(i or {}).get("imageUrl") for i in detail.get("additionalImages") or []] if u],
+        "description": text_from_html(detail.get("description") or detail.get("shortDescription") or ""),
+        "details": {k: v for k, v in aspects.items() if k not in ("Reg. Mark", "Registration Number")},
     })
     return listing
+
+
+def _dashboard_basics(item, car, source):
+    """The columns a new Supabase row needs (it may arrive before the end-of-run full sync)."""
+    return {"source": source, "make": car.get("make"), "model": car.get("model"), "title": item.get("title"),
+            "price": item.get("price_value"), "mileage": item.get("mileage"), "year": item.get("year"),
+            "transmission": item.get("transmission"), "fuel": item.get("fuel"), "location": item.get("location"),
+            "seller_type": item.get("seller_type")}
 
 
 class EbayScraper(BaseScraper):
@@ -162,6 +176,7 @@ class EbayScraper(BaseScraper):
         new_count = sent = unsent = 0
 
         for item in self.fetch_listings(car):
+            duplicate = None
             if is_listing_seen(item["url"]):
                 upsert_listing(self._to_db_row(item, car))  # refresh last_seen, record price changes
                 continue
@@ -189,6 +204,11 @@ class EbayScraper(BaseScraper):
                     unsent += 1
             if upsert_listing(self._to_db_row(item, car)):
                 new_count += 1
+                if not seeding:  # dashboard extras (the basic columns are synced for every car each run)
+                    push_details(item["url"], images=item.get("images") or ([item["image"]] if item.get("image") else None),
+                                 description=item.get("description"), details=item.get("details"),
+                                 market=item.get("market"), duplicate_of=(duplicate or {}).get("url"),
+                                 basics=_dashboard_basics(item, car, SOURCE))
 
         if seeding:
             mark_search_seeded(search_key)

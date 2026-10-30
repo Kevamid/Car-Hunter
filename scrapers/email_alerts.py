@@ -18,6 +18,7 @@ from scrapers.email_parsers import parse_alert
 from utils.db import get_db_connection, init_db, is_listing_seen, upsert_listing
 from utils.dedupe import duplicate_note, find_duplicate, year_from_title
 from utils.market import price_check
+from utils.supabase_sync import push_details
 from utils.matching import title_matches
 from utils.notifier import format_alert, send_telegram
 
@@ -106,14 +107,15 @@ class EmailAlerts(BaseScraper):
                 year = year_from_title(listing["title"])
                 duplicate = find_duplicate(car, {"price": listing.get("price_value"), "mileage": listing.get("mileage"),
                                                  "year": year, "title": listing["title"]}, site)
+                market = None
                 if duplicate:  # already alerted from another site: one line instead of a full alert
                     outcome = self.notifier(duplicate_note(duplicate, site, listing["title"], listing.get("price_value"), link))
                 else:
+                    market = price_check(self.ebay, car, listing.get("price_value"), year, listing["title"])
                     outcome = self.notifier(format_alert({
                         "title": listing["title"], "name": listing["title"], "source": site, "url": link,
                         "price": f"£{listing['price_value']:,}" if listing.get("price_value") else "price not in the email",
-                        "mileage": listing.get("mileage"),
-                        "market": price_check(self.ebay, car, listing.get("price_value"), year, listing["title"]),
+                        "mileage": listing.get("mileage"), "market": market,
                     }))
                 if outcome is False:
                     complete = False  # Telegram failed: retry this email next run
@@ -129,6 +131,11 @@ class EmailAlerts(BaseScraper):
                     "mileage": listing.get("mileage"), "year": year,
                 }):
                     new_total += 1
+                    push_details(listing["url"], images=listing.get("images"), market=market,
+                                 link=listing.get("link"), duplicate_of=(duplicate or {}).get("url"),
+                                 basics={"source": site, "make": car.get("make"), "model": car.get("model"),
+                                         "title": listing["title"], "price": listing.get("price_value"),
+                                         "mileage": listing.get("mileage"), "year": year})
             if complete:
                 mark_processed(message, len(listings))
             self.logger.info(f"{site} email \"{message.subject[:60]}\": {len(listings)} listings parsed")

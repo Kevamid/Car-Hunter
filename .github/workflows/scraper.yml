@@ -16,6 +16,16 @@ concurrency:
 jobs:
   scrape:
     runs-on: ubuntu-latest
+    env:  # every step can alert, price against eBay and update the dashboard
+      PYTHONUNBUFFERED: "1"  # keep print() output in order with the logging lines
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      EBAY_CLIENT_ID: ${{ secrets.EBAY_CLIENT_ID }}
+      EBAY_CLIENT_SECRET: ${{ secrets.EBAY_CLIENT_SECRET }}
+      ALERTS_EMAIL: ${{ secrets.ALERTS_EMAIL }}
+      ALERTS_APP_PASSWORD: ${{ secrets.ALERTS_APP_PASSWORD }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -53,22 +63,14 @@ jobs:
         run: python scripts/merge_db.py data/email/listings.db
 
       - name: Run Pipeline (eBay)
-        env:
-          PYTHONUNBUFFERED: "1"  # keep print() output in order with the logging lines
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          EBAY_CLIENT_ID: ${{ secrets.EBAY_CLIENT_ID }}
-          EBAY_CLIENT_SECRET: ${{ secrets.EBAY_CLIENT_SECRET }}
         run: python main.py
 
       - name: Read Alert Emails
-        env:
-          PYTHONUNBUFFERED: "1"
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          ALERTS_EMAIL: ${{ secrets.ALERTS_EMAIL }}
-          ALERTS_APP_PASSWORD: ${{ secrets.ALERTS_APP_PASSWORD }}
         run: python -m scrapers.email_alerts
+
+      - name: Sync Dashboard (Supabase)
+        if: always()
+        run: python -m utils.supabase_sync
 
       - name: Upload Current Database Artifact
         if: always()
