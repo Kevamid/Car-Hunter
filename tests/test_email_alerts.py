@@ -11,7 +11,7 @@ import unittest
 from urllib.parse import quote
 
 import utils.db as db
-from scrapers.email_alerts import EmailAlerts, match_car
+from scrapers.email_alerts import EmailAlerts, classify, match_car
 from scrapers.email_parsers import parse_alert
 from utils.mailbox import Message, parse_message
 
@@ -167,6 +167,26 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(match_car({"title": "Renault Clio 197", "price_value": 4200}, CARS)["model"], "Clio Sport")
         self.assertIsNone(match_car({"title": "Renault Clio 1.2 Play", "price_value": 2000}, CARS))
         self.assertEqual(match_car({"title": "Mazda MX-5", "price_value": None}, CARS)["model"], "MX-5")  # no price: kept
+
+    def test_switched_off_search_and_pass_through(self):
+        cars = [{**CARS[0], "enabled": False}, CARS[1]]
+        self.assertIsNone(match_car({"title": "2003 Mazda MX5 1.8", "price_value": 4995}, cars))
+        self.assertEqual(classify({"title": "2003 Mazda MX5 1.8", "price_value": 4995}, cars)[0], "skip")
+        self.assertEqual(classify({"title": "Renault Clio 1.2 Play", "price_value": 2000}, cars)[0], "skip")
+        self.assertEqual(classify({"title": "2006 Mazda MX-5 2.0", "price_value": 12500}, CARS)[0], "skip")
+        self.assertEqual(classify({"title": "2007 Porsche Cayman 2.7", "price_value": 14000}, CARS)[0], "other")
+        self.assertEqual(classify({"title": "Porsche Cayman", "price_value": 9000, "currency": "EUR"}, CARS)[0], "skip")
+
+    def test_pass_through_alerts_cars_that_match_no_search(self):
+        html = PH_HTML.replace("2008 Renault Clio 197", "2007 Porsche Cayman 2.7")
+        run = lambda on: EmailAlerts(CARS, notifier=lambda t: self.sent.append(t) or True, alert_delay_s=0,
+                                     fetch=lambda d, n: [msg(html, mid=f"<{on}@ph>")], pass_through=on).run()
+        self.assertEqual(run(False), 1)                      # only the £4,995 MX-5
+        self.assertEqual(run(True), 1)                       # now the Cayman too (the MX-5 is already seen)
+        self.assertIn("Porsche Cayman", self.sent[-1])
+        self.assertIn("Not one of your searches", self.sent[-1])
+        row = db.get_db_connection().execute("SELECT make, model FROM listings WHERE title LIKE '%Cayman%'").fetchone()
+        self.assertEqual((row["make"], row["model"]), ("Other", "cars"))
 
     def test_alerts_once_per_listing_and_email(self):
         self.assertEqual(self.run_with([msg(PH_HTML)]), 2)       # MX-5 £4,995 and Clio 197; the £12,500 MX-5 is over budget

@@ -8,7 +8,8 @@ runner uses Python 3.11).
 Python, Playwright (sync API, scrapers paused), SQLite, GitHub Actions (one workflow every 15 minutes + manual
 `workflow_dispatch`), Telegram alerts.
 
-- `main.py` loads `config.json` (list of cars) and runs every scraper for every car.
+- `main.py` loads the searches (`utils/searches.py`: the dashboard's Searches panel; `config.json` is only the last-resort
+  fallback) and runs every scraper for every switched-on car.
 - `scrapers/pistonheads.py` PistonHeads (rewritten; see below).
 - `scrapers/car_and_classic.py` Car & Classic.
 - `scrapers/base.py` small base class (logger, `is_written_off`) used by Car & Classic.
@@ -62,6 +63,15 @@ Private web dashboard of every car found, with photos, details and favourites.
   host. Needs `supabase/002_manual_cars.sql` (RLS: allowed users may insert/update/delete ONLY manual rows). Manual
   eBay links get photos/description from the photo backfill (source "eBay"). Detail sheet has "Delete" for manual
   cars only. The pipeline never deletes rows; `sync_all` only upserts its own listings.
+- SEARCHES PANEL (31 Oct 2026, ⚙ in the top bar): the cars being hunted live in Supabase `searches` (make, model,
+  enabled, min/max price, aliases jsonb = "must-have words", ebay, note) + `settings` (`pass_through`), from
+  `supabase/003_searches.sql` (seeded with the five config.json cars). `utils.searches.load()` reads them every run
+  (service key), keeps the last good copy in SQLite `search_cache` and falls back to it, then to config.json (so a
+  switched-off car stays off during an outage). eBay searches only enabled + ebay cars. Email alerts
+  (`email_alerts.classify`): a listing BELONGS to a search when its title has the model's first word; it alerts only
+  if that search is on and its full rules pass; listings belonging to no search are alerted only with pass-through
+  on (make "Other", model "cars", no dedupe/market, "Not one of your searches" line). Switched-off, over-budget or
+  alias-less (e.g. plain Clio 1.2) cars are never passed through. config.json is NOT updated from the panel.
 - eBay API licence: storing listing descriptions/photos for a private personal dashboard; re-read the licence before
   anything public.
 

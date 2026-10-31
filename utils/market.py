@@ -119,11 +119,8 @@ def config_car_for(make, model, cars):
 def add_market(report, vehicle, price, client, cars=None):
     """Insert the market line above the report's footer. Never fails the report."""
     if cars is None:
-        try:
-            with open("config.json") as f:
-                cars = json.load(f)
-        except (OSError, ValueError):
-            cars = []
+        from utils import searches
+        cars = searches.load()["searches"]  # switched-off searches still describe the car
     engine = f"{vehicle.engine_cc / 1000:.1f}" if getattr(vehicle, "engine_cc", None) else None
     line = price_check(client, config_car_for(vehicle.make, vehicle.model, cars), price, vehicle.year, engine)
     if not line:

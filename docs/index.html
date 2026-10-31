@@ -31,7 +31,7 @@
     backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
   .bar { display: flex; align-items: center; gap: 8px; padding: 12px 0 8px; }
   .bar h1 { font-size: 18px; margin: 0; letter-spacing: -.01em; white-space: nowrap; }
-  .bar .count { color: var(--muted); font-size: 13px; white-space: nowrap; }
+  .bar .count { color: var(--muted); font-size: 13px; white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .bar button { white-space: nowrap; }
   .bar .spacer { flex: 1; }
   .linkbtn { background: none; border: 0; color: var(--muted); cursor: pointer; padding: 6px; font-size: 13px; }
@@ -125,6 +125,26 @@
   .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .hint { color: var(--muted); font-size: 12.5px; margin: 0; }
   .danger { background: none; border: 1px solid var(--warn); color: var(--warn); border-radius: 10px; padding: 11px 16px; cursor: pointer; }
+
+  /* searches panel */
+  .srch { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; display: grid; gap: 10px; }
+  .srch.off { opacity: .6; }
+  .srch .head { display: flex; align-items: center; gap: 10px; }
+  .srch .name { flex: 1; font-weight: 600; font-size: 16px; }
+  .row3 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .switch { position: relative; width: 46px; height: 28px; flex: 0 0 auto; }
+  .switch input { opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; position: absolute; inset: 0; z-index: 1; }
+  .switch span { position: absolute; inset: 0; border-radius: 999px; background: var(--line); transition: background .15s; }
+  .switch span::after { content: ""; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%;
+    background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.3); transition: transform .15s; }
+  .switch input:checked + span { background: var(--good); }
+  .switch input:checked + span::after { transform: translateX(18px); }
+  .switch input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .check { display: flex !important; align-items: center; gap: 8px; color: var(--text) !important; }
+  .check input { width: auto !important; }
+  .sstat { color: var(--muted); font-size: 12.5px; min-height: 1em; }
+  .setting { display: flex; align-items: center; gap: 12px; }
+  .setting div { flex: 1; }
 
   /* sign-in */
   .signin { max-width: 380px; margin: 12vh auto 0; padding: 24px; background: var(--surface); border: 1px solid var(--line);
@@ -295,7 +315,7 @@ function renderShell() {
     <header><div class="wrap">
       <div class="bar"><h1>Car Hunter</h1><span class="count" id="count"></span><span class="spacer"></span>
         <button class="addbtn" id="add">+ Add car</button>
-        <button class="linkbtn" id="refresh" aria-label="Refresh" title="Refresh" style="font-size:18px">↻</button><button class="linkbtn" id="signout">Sign out</button></div>
+        <button class="linkbtn" id="refresh" aria-label="Refresh" title="Refresh" style="font-size:18px">↻</button><button class="linkbtn" id="searches" aria-label="Searches" title="Searches: what gets alerted" style="font-size:18px">⚙</button></div>
       <div class="filters">
         <input type="search" id="q" placeholder="Search" value="${esc(state.q)}" aria-label="Search">
         <button class="chip" id="fav" aria-pressed="${state.favOnly}">★ Favourites</button>
@@ -320,7 +340,7 @@ function renderShell() {
   on("fav", "click", e => { state.favOnly = !state.favOnly; e.target.setAttribute("aria-pressed", state.favOnly); });
   on("ended", "click", e => { state.showEnded = !state.showEnded; e.target.setAttribute("aria-pressed", state.showEnded); });
   document.getElementById("refresh").onclick = loadData;
-  document.getElementById("signout").onclick = signOut;
+  document.getElementById("searches").onclick = openSearches;
   document.getElementById("add").onclick = openAddForm;
   const grid = document.getElementById("grid");
   grid.addEventListener("click", e => {
@@ -551,6 +571,135 @@ function openAddForm() {
         ? "The database doesn't allow adding cars yet: run supabase/002_manual_cars.sql in Supabase's SQL Editor (one-off)."
         : /409/.test(err.message) ? "That advert is already in your dashboard (refresh to see it)." : "Couldn't save it. Please try again.";
     }
+  });
+}
+
+/* ---------- searches: which cars get alerted (the pipeline reads these every run) ---------- */
+const words = list => (list || []).join(", ");
+const wordList = s => String(s || "").split(/[,\n]/).map(w => w.trim()).filter(Boolean);
+
+async function openSearches() {
+  state.open = "__searches__"; history.pushState({ open: "__searches__" }, "");
+  const sheet = document.getElementById("sheet");
+  sheet.innerHTML = `<div class="top"><button class="iconbtn" id="back" aria-label="Back">←</button><div class="t">Searches</div></div>
+    <div class="detail"><div class="loading">Loading searches...</div></div>`;
+  sheet.classList.add("open"); sheet.scrollTop = 0;
+  document.getElementById("back").onclick = () => history.back();
+  try {
+    const [list, settings] = await Promise.all([api("searches?select=*&order=id"), api("settings?select=key,value")]);
+    state.searches = list;
+    state.settings = Object.fromEntries(settings.map(s => [s.key, s.value]));
+    renderSearches();
+  } catch (e) {
+    if (String(e.message) === "signed out") return;
+    sheet.querySelector(".detail").innerHTML = /404/.test(e.message)
+      ? `<div class="empty">Searches aren't set up yet: run <b>supabase/003_searches.sql</b> in Supabase's SQL Editor (one-off), then come back.</div>`
+      : `<div class="empty">Couldn't load your searches (${esc(e.message)}). Try again shortly.</div>`;
+  }
+}
+
+function searchCard(s) {
+  return `<div class="srch ${s.enabled ? "" : "off"}" data-id="${s.id}">
+    <div class="head"><div class="name">${esc(s.make)} ${esc(s.model)}</div>
+      <label class="switch" title="Alerts on or off"><input type="checkbox" data-f="enabled" ${s.enabled ? "checked" : ""} aria-label="Alerts for ${esc(s.make)} ${esc(s.model)}"><span></span></label></div>
+    <div class="form">
+      <div class="row3">
+        <label>Max price (£)<input type="number" inputmode="numeric" min="0" data-f="max_price" value="${esc(s.max_price ?? "")}"></label>
+        <label>Min price (£)<input type="number" inputmode="numeric" min="0" data-f="min_price" value="${esc(s.min_price ?? "")}"></label>
+      </div>
+      <label>Must-have words (any one, comma separated)<input data-f="aliases" value="${esc(words(s.aliases))}" placeholder="none: any ${esc(s.model)}"></label>
+      <label class="check"><input type="checkbox" data-f="ebay" ${s.ebay ? "checked" : ""}> Also search eBay</label>
+      <label>Note<input data-f="note" value="${esc(s.note || "")}" placeholder="optional"></label>
+    </div>
+    <div class="head"><div class="sstat"></div><button class="linkbtn" data-del>Delete</button></div>
+  </div>`;
+}
+
+function renderSearches() {
+  const box = document.querySelector("#sheet .detail"); if (!box) return;
+  const on = state.searches.filter(s => s.enabled).length;
+  box.innerHTML = `
+    <p class="hint">${on} of ${state.searches.length} switched on. Changes apply from the next check (within about 15 minutes),
+      to eBay and to the PistonHeads, Autotrader and Car &amp; Classic alert emails. The saved searches on those sites decide
+      which emails arrive; these decide which of their cars reach you.</p>
+    <div class="srch"><div class="setting"><div><b>Cars that match none of these</b><div class="hint">Alert me on cars from the sites' alert
+      emails that aren't one of the cars below (e.g. a new saved search on Autotrader). Cars that are switched off, over budget
+      or missing a must-have word are never passed through.</div></div>
+      <label class="switch"><input type="checkbox" id="passthru" ${state.settings.pass_through === true ? "checked" : ""} aria-label="Alert on other cars"><span></span></label></div>
+      <div class="sstat" id="pstat"></div></div>
+    ${state.searches.map(searchCard).join("")}
+    <form class="srch form" id="newsearch">
+      <div class="name" style="font-weight:600">Add a car</div>
+      <div class="row3">
+        <label>Make<input id="n-make" required placeholder="e.g. Porsche"></label>
+        <label>Model<input id="n-model" required placeholder="e.g. Cayman"></label>
+      </div>
+      <p class="hint">The model's first word must appear in advert titles ("Clio" for Clio Sport). Use must-have words for versions, e.g. 182, 197.</p>
+      <div class="row3">
+        <label>Max price (£)<input id="n-max" type="number" inputmode="numeric" min="0"></label>
+        <label>Min price (£)<input id="n-min" type="number" inputmode="numeric" min="0"></label>
+      </div>
+      <label>Must-have words (optional)<input id="n-words" placeholder="e.g. 987, s"></label>
+      <div class="actions"><button class="primary" type="submit">Add search</button></div>
+      <div class="sstat" id="nstat2"></div>
+    </form>
+    <div class="actions"><button class="secondary" id="signout2">Sign out</button></div>`;
+
+  document.getElementById("signout2").onclick = signOut;
+  document.getElementById("passthru").onchange = async e => {
+    const stat = document.getElementById("pstat"); stat.textContent = "Saving...";
+    try {
+      await api("settings", { method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
+        body: JSON.stringify({ key: "pass_through", value: e.target.checked, updated_at: new Date().toISOString() }) });
+      state.settings.pass_through = e.target.checked; stat.textContent = "Saved";
+    } catch (err) { e.target.checked = !e.target.checked; stat.textContent = "Couldn't save: try again"; }
+  };
+
+  box.querySelectorAll(".srch[data-id]").forEach(card => {
+    const id = Number(card.dataset.id), s = state.searches.find(x => x.id === id), stat = card.querySelector(".sstat");
+    const save = async (field, value, input) => {
+      stat.textContent = "Saving...";
+      try {
+        await api(`searches?id=eq.${id}`, { method: "PATCH", headers: { Prefer: "return=minimal" },
+          body: JSON.stringify({ [field]: value, updated_at: new Date().toISOString() }) });
+        s[field] = value; stat.textContent = "Saved";
+        if (field === "enabled") { card.classList.toggle("off", !value); renderSearches(); }
+      } catch (err) {
+        stat.textContent = "Couldn't save: try again";
+        if (input.type === "checkbox") input.checked = !input.checked;
+      }
+    };
+    card.querySelectorAll("[data-f]").forEach(input => input.addEventListener("change", () => {
+      const f = input.dataset.f;
+      const value = input.type === "checkbox" ? input.checked
+                  : f === "aliases" ? wordList(input.value)
+                  : /price/.test(f) ? (input.value ? Math.round(Number(input.value)) : null)
+                  : input.value.trim() || null;
+      save(f, value, input);
+    }));
+    card.querySelector("[data-del]").onclick = async () => {
+      if (!confirm(`Delete the ${s.make} ${s.model} search? (Switching it off keeps its settings.)`)) return;
+      try {
+        await api(`searches?id=eq.${id}`, { method: "DELETE" });
+        state.searches = state.searches.filter(x => x.id !== id); renderSearches();
+      } catch (err) { stat.textContent = "Couldn't delete: try again"; }
+    };
+  });
+
+  document.getElementById("newsearch").addEventListener("submit", async e => {
+    e.preventDefault();
+    const $ = id => document.getElementById(id), stat = $("nstat2");
+    const make = $("n-make").value.trim(), model = $("n-model").value.trim();
+    if (state.searches.some(s => s.make.toLowerCase() === make.toLowerCase() && s.model.toLowerCase() === model.toLowerCase())) {
+      stat.textContent = "You already have that search."; return;
+    }
+    const row = { make, model, max_price: $("n-max").value ? Math.round(Number($("n-max").value)) : null,
+                  min_price: $("n-min").value ? Math.round(Number($("n-min").value)) : null, aliases: wordList($("n-words").value) };
+    stat.textContent = "Saving...";
+    try {
+      const saved = await api("searches", { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify(row) });
+      state.searches.push(saved[0]); renderSearches();
+    } catch (err) { stat.textContent = /409/.test(err.message) ? "You already have that search." : "Couldn't add it: try again"; }
   });
 }
 

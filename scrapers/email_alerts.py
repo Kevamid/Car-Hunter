@@ -4,18 +4,18 @@ sites email him; we read his mailbox and never open their pages or follow their 
     python -m scrapers.email_alerts
 
 Each run reads the last few days of alert emails (read-only IMAP), skips emails already handled
-(Message-ID in `processed_emails`), parses listings, keeps those that match a car in config.json
-(title rules and price limit as the other sources), alerts on new ones and saves them. An email
+(Message-ID in `processed_emails`), parses listings, keeps those that match a switched-on search
+(utils.searches; title rules and price limit as the other sources), alerts on new ones and saves them. An email
 is marked handled only once all its alerts were sent, so a Telegram failure is retried next run.
 An alert email that yields no listings triggers one warning: the site may have changed its format.
 """
-import json
 import logging
 import time
 
 from scrapers.base import BaseScraper
 from scrapers.email_parsers import parse_alert
 from utils.db import get_db_connection, init_db, is_listing_seen, upsert_listing
+from utils import searches
 from utils.dedupe import duplicate_note, find_duplicate, year_from_title
 from utils.market import price_check
 from utils.supabase_sync import push_details
@@ -53,26 +53,47 @@ def mark_processed(message, listings):
         conn.close()
 
 
-def match_car(listing, cars):
-    """The config car this listing belongs to, or None (title rules + price limit). Prices in another
-    currency (Car & Classic shows European cars in euros) mean a non-UK car: skipped, like the scrapers did."""
+OTHER = {"make": "Other", "model": "cars"}  # pass-through listings: matched no search at all
+
+
+def classify(listing, cars):
+    """("match", car), ("skip", None) or ("other", None).
+
+    A listing BELONGS to a search when its title has the search's base model word ("Clio", "MX-5"); it is a
+    match only if that search is switched on and its full rules pass (must-have words, price). Listings that
+    belong to no search are "other" (alerted only when pass-through is on), so a switched-off or over-budget
+    MX-5, or a plain Clio 1.2, is never passed through. Prices in another currency (Car & Classic shows
+    European cars in euros) mean a non-UK car: skipped, like the scrapers did."""
     if listing.get("currency") not in (None, "GBP"):
-        return None
+        return "skip", None
+    belongs = False
     for car in cars:
-        model = str(car.get("model") or "")
-        if not title_matches(listing["title"], model.split(), model.split(), False, car.get("aliases") or []):
+        words = str(car.get("model") or "").split()
+        if not title_matches(listing["title"], words, words[:1], False, []):
+            continue
+        belongs = True
+        if car.get("enabled") is False:
+            continue
+        if not title_matches(listing["title"], words, words, False, car.get("aliases") or []):
             continue
         price, hi, lo = listing.get("price_value"), car.get("max_price"), car.get("min_price") or 0
         if price is not None and ((hi and price > hi) or price < lo):
             continue
-        return car
-    return None
+        return "match", car
+    return ("skip", None) if belongs else ("other", None)
+
+
+def match_car(listing, cars):
+    """The search this listing matches (switched on, title rules, price limit), or None."""
+    kind, car = classify(listing, cars)
+    return car if kind == "match" else None
 
 
 class EmailAlerts(BaseScraper):
-    def __init__(self, cars, notifier=None, fetch=None, alert_delay_s=1.1, ebay=None):
+    def __init__(self, cars, notifier=None, fetch=None, alert_delay_s=1.1, ebay=None, pass_through=False):
         super().__init__("Email alerts")
         self.cars = cars
+        self.pass_through = pass_through  # also alert on listings that belong to no search
         self.notifier = notifier or send_telegram
         self.fetch = fetch  # callable(sender_domains, days) -> [Message]; default: the real mailbox
         self.alert_delay_s = alert_delay_s
@@ -97,7 +118,9 @@ class EmailAlerts(BaseScraper):
 
             complete = True
             for listing in listings:
-                car = match_car(listing, self.cars)
+                kind, car = classify(listing, self.cars)
+                if kind == "other" and self.pass_through:
+                    car = OTHER
                 if car is None or is_listing_seen(listing["url"]):
                     continue
                 if sent >= MAX_ALERTS_PER_RUN:
@@ -105,18 +128,23 @@ class EmailAlerts(BaseScraper):
                     break
                 link = listing.get("link") or listing["url"]  # Autotrader: its own tracked link, for Kev to tap
                 year = year_from_title(listing["title"])
-                duplicate = find_duplicate(car, {"price": listing.get("price_value"), "mileage": listing.get("mileage"),
-                                                 "year": year, "title": listing["title"]}, site)
+                duplicate = None if car is OTHER else find_duplicate(
+                    car, {"price": listing.get("price_value"), "mileage": listing.get("mileage"),
+                          "year": year, "title": listing["title"]}, site)
                 market = None
                 if duplicate:  # already alerted from another site: one line instead of a full alert
                     outcome = self.notifier(duplicate_note(duplicate, site, listing["title"], listing.get("price_value"), link))
                 else:
-                    market = price_check(self.ebay, car, listing.get("price_value"), year, listing["title"])
-                    outcome = self.notifier(format_alert({
+                    if car is not OTHER:
+                        market = price_check(self.ebay, car, listing.get("price_value"), year, listing["title"])
+                    text = format_alert({
                         "title": listing["title"], "name": listing["title"], "source": site, "url": link,
                         "price": f"£{listing['price_value']:,}" if listing.get("price_value") else "price not in the email",
                         "mileage": listing.get("mileage"), "market": market,
-                    }))
+                    })
+                    if car is OTHER:
+                        text += "\n🔎 Not one of your searches: from a saved search on the site"
+                    outcome = self.notifier(text)
                 if outcome is False:
                     complete = False  # Telegram failed: retry this email next run
                     continue
@@ -151,11 +179,13 @@ def main():
         logging.warning("Email alerts skipped: ALERTS_EMAIL / ALERTS_APP_PASSWORD not set.")
         return
     init_db()
-    with open("config.json") as f:
-        cars = json.load(f)
+    loaded = searches.load()
+    pass_through = loaded["settings"].get("pass_through") is True
+    logging.info(f"{len(loaded['searches'])} searches from {loaded['origin']}; pass-through {'on' if pass_through else 'off'}")
     from utils.ebay_api import EbayClient
     try:
-        count = EmailAlerts(cars, ebay=EbayClient() if EbayClient.configured() else None).run()
+        count = EmailAlerts(loaded["searches"], ebay=EbayClient() if EbayClient.configured() else None,
+                            pass_through=pass_through).run()
     except mailbox.MailboxError as exc:
         logging.error(f"Email alerts failed: {exc}")
         return

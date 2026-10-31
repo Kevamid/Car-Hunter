@@ -1,12 +1,11 @@
-import json
 import logging
-import os
 from dotenv import load_dotenv
 from scrapers.pistonheads import PistonHeadsScraper
 from scrapers.car_and_classic import CarAndClassicScraper
 from scrapers.ebay import EbayScraper
 from utils.db import init_db
 from utils.ebay_api import EbayClient
+from utils import searches
 
 load_dotenv()
 
@@ -16,22 +15,18 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s"
 )
 
-def load_car_configs(filepath="config.json"):
-    if not os.path.exists(filepath):
-        logging.error(f"Configuration file not found at {filepath}")
-        return []
-    with open(filepath, "r") as f:
-        return json.load(f)
-
 def run_pipeline():
     init_db()
-    
-    cars = load_car_configs()
+
+    # searches come from the dashboard's Searches panel (falls back to the last copy, then config.json)
+    loaded = searches.load()
+    cars = [car for car in loaded["searches"] if car["enabled"] and car["ebay"]]
     car_config_count = len(cars)
-    logging.info(f"Loaded {car_config_count} car queries. Starting multi-platform pipeline...")
-    
+    logging.info(f"Loaded {car_config_count} car queries (from {loaded['origin']}; "
+                 f"{len(loaded['searches']) - car_config_count} switched off or not on eBay). Starting multi-platform pipeline...")
+
     if not cars:
-        logging.warning("No car configurations found in config.json. Exiting pipeline.")
+        logging.warning("No car searches switched on for eBay. Exiting pipeline.")
         return
 
     # Initialize scraper registry.
