@@ -72,6 +72,13 @@ Private web dashboard of every car found, with photos, details and favourites.
   if that search is on and its full rules pass; listings belonging to no search are alerted only with pass-through
   on (make "Other", model "cars", no dedupe/market, "Not one of your searches" line). Switched-off, over-budget or
   alias-less (e.g. plain Clio 1.2) cars are never passed through. config.json is NOT updated from the panel.
+- BROWSER EXTENSION (31 Oct 2026, `extension/`, Manifest V3, loaded unpacked in Chrome/Edge; see its README):
+  `activeTab` + `scripting` only; on click `popup.js` injects `extractAdvert()` into the current tab (JSON-LD Car/
+  Vehicle/Product + Offer, Open Graph, then page text: first non-finance £ price, "86k miles", year, gearbox, fuel,
+  current-format UK plates, large images). "Add to my dashboard" opens `DASHBOARD#add=<base64url JSON>`; the page
+  keeps it in localStorage `carhunter.pending` (survives sign-in), clears the hash and opens the Add form filled in
+  (incl. description and `details.Registration`). The extension holds no keys. Tested headless on synthetic pages
+  only: tune per site with real adverts (Kev's browser, his own page views; never automated fetching).
 - eBay API licence: storing listing descriptions/photos for a private personal dashboard; re-read the licence before
   anything public.
 

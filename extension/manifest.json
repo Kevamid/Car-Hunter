@@ -1,0 +1,8 @@
+{
+  "manifest_version": 3,
+  "name": "Car Hunter: grab this advert",
+  "version": "1.0",
+  "description": "Reads the car advert you're looking at (only when you click) and adds it to your Car Hunter dashboard.",
+  "action": { "default_popup": "popup.html", "default_title": "Car Hunter: grab this advert" },
+  "permissions": ["activeTab", "scripting"]
+}

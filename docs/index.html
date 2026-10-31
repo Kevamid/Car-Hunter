@@ -258,6 +258,8 @@ async function loadData() {
     state.cars = cars;
     state.favs = new Map(favs.map(f => [f.url, f.note || ""]));
     renderShell();
+    const pending = load("carhunter.pending");
+    if (pending && typeof pending === "object") { store("carhunter.pending", null); openAddForm(pending); }
   } catch (e) {
     if (String(e.message) !== "signed out") app.innerHTML = `<div class="empty">Couldn't load cars (${esc(e.message)}). Pull to refresh or try again later.</div>`;
   }
@@ -341,7 +343,7 @@ function renderShell() {
   on("ended", "click", e => { state.showEnded = !state.showEnded; e.target.setAttribute("aria-pressed", state.showEnded); });
   document.getElementById("refresh").onclick = loadData;
   document.getElementById("searches").onclick = openSearches;
-  document.getElementById("add").onclick = openAddForm;
+  document.getElementById("add").onclick = () => openAddForm();
   const grid = document.getElementById("grid");
   grid.addEventListener("click", e => {
     const star = e.target.closest(".star"), info = e.target.closest(".info"), card = e.target.closest(".card");
@@ -496,7 +498,7 @@ function parseAdvertText(text) {
   };
 }
 
-function openAddForm() {
+function openAddForm(prefill) {
   state.open = "__add__"; history.pushState({ open: "__add__" }, "");
   const sheet = document.getElementById("sheet");
   const models = [...new Set(state.cars.map(c => `${c.make} ${c.model}`))].sort();
@@ -521,6 +523,7 @@ function openAddForm() {
         <label>Fuel<select id="f-fuel"><option value=""></option><option>Petrol</option><option>Diesel</option><option>Hybrid</option><option>Electric</option></select></label>
         <label>Location<input id="f-loc" placeholder="e.g. Leeds"></label>
       </div>
+      <label>Registration (if the advert shows it)<input id="f-reg" placeholder="e.g. AB12 CDE" autocapitalize="characters"></label>
       <label>Photo links (one per line)<textarea id="f-photos" placeholder="On the advert: long-press (or right-click) a photo → Copy image address"></textarea></label>
       <p class="hint">eBay links fill in their own photos and description within about 15 minutes.</p>
       <label>Note<textarea id="f-note" placeholder="e.g. seen on a Facebook group, seller is a dealer"></textarea></label>
@@ -538,11 +541,26 @@ function openAddForm() {
     if (p.year) $("f-year").value = p.year;
     if (p.transmission) $("f-gear").value = p.transmission;
     if (p.fuel) $("f-fuel").value = p.fuel;
+    guessModel();
+    $("f-msg").textContent = "Filled in from the text: check it over.";
+  };
+  const guessModel = () => {
     const guess = models.find(m => m.split(" ").slice(1).join(" ").replace(/[^a-z0-9]/gi, "").length > 1 &&
       $("f-title").value.replace(/[^a-z0-9]/gi, "").toLowerCase().includes(m.split(" ").slice(1).join("").replace(/[^a-z0-9]/gi, "").toLowerCase()));
     if (guess && !$("f-model").value) $("f-model").value = guess;
-    $("f-msg").textContent = "Filled in from the text: check it over.";
   };
+  let description = null;
+  if (prefill) {  // from the browser extension: the advert Kev was looking at
+    const set = (id, v) => { if (v != null && v !== "") $(id).value = String(v); };
+    set("f-link", prefill.link); set("f-title", prefill.title); set("f-price", prefill.price); set("f-miles", prefill.mileage);
+    set("f-year", prefill.year); set("f-loc", prefill.location); set("f-reg", prefill.reg);
+    if (["Manual", "Automatic"].includes(prefill.transmission)) $("f-gear").value = prefill.transmission;
+    if (["Petrol", "Diesel", "Hybrid", "Electric"].includes(prefill.fuel)) $("f-fuel").value = prefill.fuel;
+    set("f-photos", (Array.isArray(prefill.images) ? prefill.images : []).map(safeUrl).filter(Boolean).join("\n"));
+    description = typeof prefill.description === "string" && prefill.description.trim() ? prefill.description.trim().slice(0, 6000) : null;
+    guessModel();
+    $("f-msg").textContent = "Filled in from the advert: check it over, then add it.";
+  }
   $("addform").addEventListener("submit", async e => {
     e.preventDefault();
     const msg = $("f-msg"), link = $("f-link").value.trim();
@@ -558,7 +576,9 @@ function openAddForm() {
       title: $("f-title").value.trim(), price: int("f-price"), mileage: int("f-miles"), year: int("f-year"),
       transmission: $("f-gear").value || null, fuel: $("f-fuel").value || null, location: $("f-loc").value.trim() || null,
       images: $("f-photos").value.split(/\s+/).map(safeUrl).filter(Boolean),
-      details: { added_by: "manual", ...($("f-note").value.trim() ? { note: $("f-note").value.trim() } : {}) },
+      description,
+      details: { added_by: "manual", ...($("f-note").value.trim() ? { note: $("f-note").value.trim() } : {}),
+                 ...($("f-reg").value.trim() ? { Registration: $("f-reg").value.trim().toUpperCase() } : {}) },
     };
     $("f-save").disabled = true; msg.textContent = "Saving...";
     try {
@@ -706,6 +726,13 @@ function renderSearches() {
 /* ---------- start ---------- */
 (async function start() {
   if (!CFG.supabaseUrl || !CFG.publishableKey) { app.innerHTML = `<div class="empty">Missing config.js</div>`; return; }
+  if (location.hash.startsWith("#add=")) {
+    try {
+      const b64 = location.hash.slice(5).replace(/-/g, "+").replace(/_/g, "/");
+      store("carhunter.pending", JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(b64), c => c.charCodeAt(0)))));
+    } catch (e) {}
+    history.replaceState(null, "", location.pathname + location.search);
+  }
   const fromLink = sessionFromHash();
   if (fromLink) { session = fromLink; store(AUTH_KEY, session); }
   if (location.hash.includes("error_description")) {

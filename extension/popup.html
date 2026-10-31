@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Car Hunter</title>
+<style>
+  :root { --bg: #f6f5f2; --surface: #fff; --text: #1b1b19; --muted: #6b6a65; --line: #dddbd4; --accent: #c2410c; --warn: #b45309; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #121211; --surface: #1c1c1a; --text: #f1f0ec; --muted: #a3a29b; --line: #33332f; --accent: #fb7a3c; --warn: #fbbf24; }
+  }
+  body { margin: 0; width: 340px; background: var(--bg); color: var(--text); font: 14px/1.4 system-ui, "Segoe UI", Roboto, sans-serif; }
+  .wrap { padding: 12px; display: grid; gap: 10px; }
+  h1 { font-size: 14px; margin: 0; color: var(--muted); font-weight: 600; }
+  .photo { width: 100%; aspect-ratio: 4/3; object-fit: cover; border-radius: 10px; background: var(--line); display: block; }
+  .title { font-weight: 600; font-size: 15px; }
+  .price { font-size: 19px; font-weight: 700; }
+  .facts { display: flex; flex-wrap: wrap; gap: 2px 12px; color: var(--muted); font-size: 13px; }
+  .facts b { color: var(--text); }
+  .reg { font-family: ui-monospace, Consolas, monospace; background: #fcd34d; color: #111; padding: 1px 6px; border-radius: 4px; }
+  button { font: inherit; border-radius: 10px; padding: 10px 14px; cursor: pointer; }
+  .primary { background: var(--accent); color: #fff; border: 0; font-weight: 600; }
+  .secondary { background: var(--surface); color: var(--text); border: 1px solid var(--line); }
+  .actions { display: grid; gap: 8px; }
+  .muted { color: var(--muted); font-size: 12.5px; }
+  .warn { color: var(--warn); font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="wrap" id="out"><div class="muted">Reading this advert...</div></div>
+<script src="popup.js"></script>
+</body>
+</html>
