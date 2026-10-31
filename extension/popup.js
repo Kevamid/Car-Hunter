@@ -52,10 +52,18 @@ async function extractAdvert() {
       if (num(m[1]) >= 300) { price = num(m[1]); break; }
     }
   }
-  let mileage = num(val(car.mileageFromOdometer));
+  let mileage = num(val(car.mileageFromOdometer)), mileageNote = null;
+  if (mileage && /^(KMT|km)$/i.test(String((car.mileageFromOdometer || {}).unitCode || ""))) mileage = Math.round(mileage * 0.621371);
   if (!mileage) {
-    const m = after.match(/(\d{1,3}(?:,\d{3})+|\d{1,6})\s*(k)?\s*(?:miles|mi)\b/i);
-    if (m) mileage = m[2] ? Math.round(Number(m[1].replace(/,/g, "")) * 1000) : num(m[1]);
+    const m = after.match(/(\d{1,3}(?:,\d{3})+|\d{1,6})\s*(k)?\s*(miles|mi|km|kms|kilometres|kilometers)\b/i);
+    if (m) {
+      mileage = m[2] ? Math.round(Number(m[1].replace(/,/g, "")) * 1000) : num(m[1]);
+      // Facebook labels every UK car's mileage "km" ("Driven 143,000 km") but it's really miles: keep it as is
+      if (/^k/i.test(m[3]) && !/(^|\.)facebook\.com$/i.test(window.location.hostname)) {
+        mileageNote = `The advert says ${m[0]}: converted to miles`;
+        mileage = Math.round(mileage * 0.621371);
+      }
+    }
   }
   const year = yearIn(car.vehicleModelDate || car.modelDate || car.productionDate || car.dateVehicleFirstRegistered) ||
                yearIn(title) || yearIn((text.match(/\b(?:year|registered|first registration)\b[^\n\d]{0,20}\d{4}/i) || [])[0]);
@@ -74,7 +82,7 @@ async function extractAdvert() {
   const describe = () => {
     const tidy = s => String(s || "").split("\n").map(l => l.trim()).filter(Boolean).join("\n").replace(/\n(see|show|read) less$/i, "").trim();
     if (clean(car.description)) return tidy(car.description).slice(0, 4000);
-    const stop = /\n\s*(see less|show less|location is approximate|seller information|seller details|meet the seller|message (the )?seller|send seller a message|send a message|similar (cars|items|listings|adverts)|today's picks|report (this )?(listing|advert|ad)|safety tips|sponsored)\b/i;
+    const stop = /\s(see|show|read) less\b|\n[^\n]*location is approximate|\n\s*(seller information|seller details|meet the seller|message (the )?seller|send seller a message|send a message|similar (cars|items|listings|adverts)|today's picks|report (this )?(listing|advert|ad)|safety tips|sponsored)\b/i;
     for (const marker of [/(?:^|\n)\s*(seller'?s description|vehicle description|description|the car)\s*\n/i, /(?:^|\n)\s*(about this (car|vehicle)|overview|key (details|features))\s*\n/i]) {
       const m = after.match(marker); if (!m) continue;
       const body = after.slice(m.index + m[0].length); const end = body.search(stop);
@@ -100,7 +108,7 @@ async function extractAdvert() {
 
   return {
     url: window.location.href, site: window.location.hostname.replace(/^www\./, ""), title, price, mileage, year, transmission, fuel,
-    regs, location: where, description: describe(),
+    regs, location: where, description: describe(), mileageNote,
     images: images.slice(0, 25), structured: Boolean(car.name || offer.price),
     debug: { area: dialogs.length ? "overlay" : root === document.body ? "body" : root.tagName.toLowerCase(),
              tab: clean(document.title), og: meta("og:title"), headings: headings.slice(0, 8), structuredBlocks: ld.length,
@@ -136,6 +144,7 @@ function render(a) {
    ["Photos ", a.images.length]].forEach(([k, v]) => { if (v) { const s = el("span", null, k); s.append(el("b", null, String(v))); facts.append(s); } });
   if (reg) { const s = el("span", null, "Reg "); s.append(el("span", "reg", reg)); facts.append(s); }
   nodes.push(facts);
+  if (a.mileageNote) nodes.push(el("div", "warn", a.mileageNote));
   if (a.regs.length > 1) nodes.push(el("div", "muted", `Possible registrations on the page: ${a.regs.slice(0, 4).join(", ")}`));
   if (!a.structured) nodes.push(el("div", "muted", "This site gives no structured listing data, so these were read from the page's text: check them in the form."));
 
@@ -143,7 +152,8 @@ function render(a) {
   const addBtn = el("button", "primary", "Add to my dashboard");
   addBtn.onclick = () => {
     const prefill = { link: a.url, title: a.title, price: a.price, mileage: a.mileage, year: a.year, transmission: a.transmission,
-                      fuel: a.fuel, location: a.location, reg, images: a.images.slice(0, 20), description: a.description };
+                      fuel: a.fuel, location: a.location, reg, images: a.images.slice(0, 20), description: a.description,
+                      note: a.mileageNote };
     chrome.tabs.create({ url: `${DASHBOARD}#add=${encode(prefill)}` });
     window.close();
   };

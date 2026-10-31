@@ -552,7 +552,7 @@ function openAddForm(prefill) {
   if (prefill) {  // from the browser extension: the advert Kev was looking at
     const set = (id, v) => { if (v != null && v !== "") $(id).value = String(v); };
     set("f-link", prefill.link); set("f-title", prefill.title); set("f-price", prefill.price); set("f-miles", prefill.mileage);
-    set("f-year", prefill.year); set("f-loc", prefill.location); set("f-reg", prefill.reg);
+    set("f-year", prefill.year); set("f-loc", prefill.location); set("f-reg", prefill.reg); set("f-note", prefill.note);
     if (["Manual", "Automatic"].includes(prefill.transmission)) $("f-gear").value = prefill.transmission;
     if (["Petrol", "Diesel", "Hybrid", "Electric"].includes(prefill.fuel)) $("f-fuel").value = prefill.fuel;
     set("f-photos", (Array.isArray(prefill.images) ? prefill.images : []).map(safeUrl).filter(Boolean).join("\n"));
