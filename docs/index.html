@@ -506,8 +506,8 @@ function openAddForm(prefill) {
     <div class="top"><button class="iconbtn" id="back" aria-label="Back">←</button><div class="t">Add a car you found</div></div>
     <form class="detail form" id="addform">
       <label>Advert link (required)<input type="url" id="f-link" required placeholder="https://..." inputmode="url"></label>
-      <label>Paste the advert's text (optional): I'll fill in what I can
-        <textarea id="f-text" placeholder="Copy the title, price, mileage, description... from the advert and paste here"></textarea></label>
+      <label>Advert text (optional): saved as the description, and I'll fill in what I can
+        <textarea id="f-text" style="min-height:120px" placeholder="Copy the title, price, mileage, description... from the advert and paste here"></textarea></label>
       <button type="button" class="secondary" id="f-fill">Fill in from the text</button>
       <label>Title<input id="f-title" required placeholder="e.g. 2006 Mazda MX-5 2.0 Sport"></label>
       <label>Car (for filtering)<input id="f-model" list="f-models" placeholder="e.g. Mazda MX-5"><datalist id="f-models">${models.map(m => `<option value="${esc(m)}">`).join("")}</datalist></label>
@@ -549,7 +549,6 @@ function openAddForm(prefill) {
       $("f-title").value.replace(/[^a-z0-9]/gi, "").toLowerCase().includes(m.split(" ").slice(1).join("").replace(/[^a-z0-9]/gi, "").toLowerCase()));
     if (guess && !$("f-model").value) $("f-model").value = guess;
   };
-  let description = null;
   if (prefill) {  // from the browser extension: the advert Kev was looking at
     const set = (id, v) => { if (v != null && v !== "") $(id).value = String(v); };
     set("f-link", prefill.link); set("f-title", prefill.title); set("f-price", prefill.price); set("f-miles", prefill.mileage);
@@ -557,7 +556,7 @@ function openAddForm(prefill) {
     if (["Manual", "Automatic"].includes(prefill.transmission)) $("f-gear").value = prefill.transmission;
     if (["Petrol", "Diesel", "Hybrid", "Electric"].includes(prefill.fuel)) $("f-fuel").value = prefill.fuel;
     set("f-photos", (Array.isArray(prefill.images) ? prefill.images : []).map(safeUrl).filter(Boolean).join("\n"));
-    description = typeof prefill.description === "string" && prefill.description.trim() ? prefill.description.trim().slice(0, 6000) : null;
+    if (typeof prefill.description === "string") set("f-text", prefill.description.trim().slice(0, 6000));
     guessModel();
     $("f-msg").textContent = "Filled in from the advert: check it over, then add it.";
   }
@@ -576,7 +575,7 @@ function openAddForm(prefill) {
       title: $("f-title").value.trim(), price: int("f-price"), mileage: int("f-miles"), year: int("f-year"),
       transmission: $("f-gear").value || null, fuel: $("f-fuel").value || null, location: $("f-loc").value.trim() || null,
       images: $("f-photos").value.split(/\s+/).map(safeUrl).filter(Boolean),
-      description,
+      description: $("f-text").value.trim().slice(0, 6000) || null,
       details: { added_by: "manual", ...($("f-note").value.trim() ? { note: $("f-note").value.trim() } : {}),
                  ...($("f-reg").value.trim() ? { Registration: $("f-reg").value.trim().toUpperCase() } : {}) },
     };

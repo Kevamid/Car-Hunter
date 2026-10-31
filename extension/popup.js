@@ -5,7 +5,7 @@ const DASHBOARD = "https://kevamid.github.io/Car-Hunter/";
 
 /* Runs inside the advert page (injected on click). Must be self-contained: no outside variables.
    Order of trust: the page's structured listing data (schema.org JSON-LD, Open Graph), then its text. */
-function extractAdvert() {
+async function extractAdvert() {
   const ld = [];
   const walk = o => {
     if (!o || typeof o !== "object") return;
@@ -22,29 +22,46 @@ function extractAdvert() {
   const meta = n => { const m = document.querySelector(`meta[property="${n}"], meta[name="${n}"], meta[itemprop="${n}"]`); return m ? m.content : null; };
   const yearIn = s => { const m = String(s ?? "").match(/\b(19[5-9]\d|20[0-4]\d)\b/); return m ? Number(m[1]) : null; };
 
-  const h1 = document.querySelector("h1");
-  const title = String(car.name || (h1 && h1.innerText) || meta("og:title") || document.title || "").replace(/\s+/g, " ").trim();
-  const text = ((document.querySelector("main, article, [role=main]") || document.body).innerText || "").slice(0, 40000);
+  const clean = s => String(s || "").replace(/\s+/g, " ").trim();
+  const visible = e => e.getClientRects().length > 0 && getComputedStyle(e).visibility !== "hidden";
+  // the advert: the topmost open overlay (e.g. a Facebook Marketplace item opened from search), else the main area
+  const dialogs = [...document.querySelectorAll('[role=dialog], [aria-modal="true"]')]
+    .filter(d => visible(d) && (d.innerText || "").length > 200);
+  const root = dialogs[dialogs.length - 1] || document.querySelector("main, article, [role=main]") || document.body;
+  const generic = /^(home|marketplace|notifications?|chats?|messages|menu|search( results)?|facebook|browse all|inbox|today's picks)$/i;
+  const headingsIn = el => [...el.querySelectorAll('h1, [role=heading][aria-level="1"]')].filter(visible).map(h => clean(h.innerText))
+    .filter(t => t.length >= 4 && t.length <= 150 && !generic.test(t));
+  const headings = headingsIn(root).length ? headingsIn(root) : headingsIn(document);
+  const tabTitle = clean(document.title).replace(/^\(\d+\)\s*/, "").replace(/^Marketplace\s*[–-]\s*/i, "")
+    .replace(/\s*[|–-]\s*Facebook( Marketplace)?$/i, "");
+  const title = clean(car.name || headings[0] || meta("og:title") || (generic.test(tabTitle) ? "" : tabTitle));
+  // descriptions cut short behind "See more" (Facebook): open them, inside the advert only, then read
+  const more = [...root.querySelectorAll('[role=button], button, span, a')].filter(e => /^(see|show|read) more$/i.test(clean(e.innerText)) && visible(e));
+  if (more.length) { more.slice(0, 3).forEach(e => e.click()); await new Promise(r => setTimeout(r, 400)); }
+  const text = (root.innerText || "").slice(0, 40000);
+  const at = title ? text.indexOf(title) : -1;
+  const after = at >= 0 ? text.slice(at) : text;  // the advert's own details come after its title
 
-  // price: structured first; else the first £ amount that isn't finance ("£199 per month", "deposit")
+  // price: structured first; else the first £ amount after the title that isn't finance ("£199 per month", "deposit")
   let price = num(offer.price) || num(val(offer.priceSpecification && offer.priceSpecification.price)) ||
               num(meta("product:price:amount")) || num(meta("og:price:amount")) || num(meta("price"));
+  const PRICE = /£\s?(\d{1,3}(?:,\d{3})+|\d{3,6})(?!\.\d)(.{0,24})/g;
   if (!price) {
-    for (const m of text.matchAll(/£\s?(\d{1,3}(?:,\d{3})+|\d{3,6})(?!\.\d)(.{0,24})/g)) {
+    for (const m of [...after.matchAll(PRICE), ...text.matchAll(PRICE)]) {
       if (/month|p\/?m\b|pcm|deposit|per week|finance|apr/i.test(m[2])) continue;
       if (num(m[1]) >= 300) { price = num(m[1]); break; }
     }
   }
   let mileage = num(val(car.mileageFromOdometer));
   if (!mileage) {
-    const m = text.match(/(\d{1,3}(?:,\d{3})+|\d{1,6})\s*(k)?\s*(?:miles|mi)\b/i);
+    const m = after.match(/(\d{1,3}(?:,\d{3})+|\d{1,6})\s*(k)?\s*(?:miles|mi)\b/i);
     if (m) mileage = m[2] ? Math.round(Number(m[1].replace(/,/g, "")) * 1000) : num(m[1]);
   }
   const year = yearIn(car.vehicleModelDate || car.modelDate || car.productionDate || car.dateVehicleFirstRegistered) ||
                yearIn(title) || yearIn((text.match(/\b(?:year|registered|first registration)\b[^\n\d]{0,20}\d{4}/i) || [])[0]);
   const pick = (structured, re) => {
     const s = val(structured); if (s) return String(s).replace(/^https?:\/\/schema\.org\//, "");
-    const m = text.match(re); return m ? m[1][0].toUpperCase() + m[1].slice(1).toLowerCase() : null;
+    const m = after.match(re); return m ? m[1][0].toUpperCase() + m[1].slice(1).toLowerCase() : null;
   };
   const transmission = pick(car.vehicleTransmission, /\b(manual|automatic|semi-auto)\b/i);
   const fuel = pick(car.fuelType, /\b(petrol|diesel|hybrid|electric)\b/i);
@@ -53,7 +70,23 @@ function extractAdvert() {
 
   const place = offer.availableAtOrFrom || (offer.seller && offer.seller.address) || (car.offers && car.offers.seller && car.offers.seller.address) || {};
   const addr = place.address || place;
-  const where = (typeof addr === "string" ? addr : addr.addressLocality || addr.addressRegion || null);
+  // the seller's text: structured; else the page's description section; else everything after the title
+  const describe = () => {
+    const tidy = s => String(s || "").split("\n").map(l => l.trim()).filter(Boolean).join("\n").replace(/\n(see|show|read) less$/i, "").trim();
+    if (clean(car.description)) return tidy(car.description).slice(0, 4000);
+    const stop = /\n\s*(see less|show less|location is approximate|seller information|seller details|meet the seller|message (the )?seller|send seller a message|send a message|similar (cars|items|listings|adverts)|today's picks|report (this )?(listing|advert|ad)|safety tips|sponsored)\b/i;
+    for (const marker of [/(?:^|\n)\s*(seller'?s description|vehicle description|description|the car)\s*\n/i, /(?:^|\n)\s*(about this (car|vehicle)|overview|key (details|features))\s*\n/i]) {
+      const m = after.match(marker); if (!m) continue;
+      const body = after.slice(m.index + m[0].length); const end = body.search(stop);
+      const textOut = tidy(end >= 0 ? body.slice(0, end) : body);
+      if (textOut.length > 30) return textOut.slice(0, 4000);
+    }
+    if (clean(meta("og:description")).length > 40) return tidy(meta("og:description")).slice(0, 4000);
+    const end = after.search(stop);
+    return tidy(end >= 0 ? after.slice(0, end) : after).slice(0, 4000);
+  };
+  const listedIn = after.match(/\bListed .{0,40}? in ([A-Z][\w' .-]{1,40}?)\s*(?:\n|,|$)/);  // Facebook: "Listed 3 days ago in Leeds"
+  const where = (typeof addr === "string" ? addr : addr.addressLocality || addr.addressRegion || null) || (listedIn ? listedIn[1] : null);
 
   // photos: structured, Open Graph, then big pictures on the page (not logos/icons)
   const images = [];
@@ -62,12 +95,16 @@ function extractAdvert() {
     if (/^https:/.test(u) && !/\.svg(\?|$)|logo|icon|sprite|avatar/i.test(u) && !images.includes(u)) images.push(u); };
   [].concat(car.image || []).forEach(add);
   add(meta("og:image"));
-  document.querySelectorAll("img").forEach(img => { if (img.naturalWidth >= 400 && img.naturalHeight >= 250) add(img.currentSrc || img.src); });
+  const pics = root.querySelectorAll("img").length ? root.querySelectorAll("img") : document.querySelectorAll("img");
+  pics.forEach(img => { if (img.naturalWidth >= 400 && img.naturalHeight >= 250) add(img.currentSrc || img.src); });
 
   return {
     url: window.location.href, site: window.location.hostname.replace(/^www\./, ""), title, price, mileage, year, transmission, fuel,
-    regs, location: where, description: String(car.description || meta("og:description") || "").trim().slice(0, 3000),
+    regs, location: where, description: describe(),
     images: images.slice(0, 25), structured: Boolean(car.name || offer.price),
+    debug: { area: dialogs.length ? "overlay" : root === document.body ? "body" : root.tagName.toLowerCase(),
+             tab: clean(document.title), og: meta("og:title"), headings: headings.slice(0, 8), structuredBlocks: ld.length,
+             text: after.slice(0, 1500) },
   };
 }
 
@@ -115,7 +152,15 @@ function render(a) {
     try { await navigator.clipboard.writeText(summary(a, reg)); copyBtn.textContent = "Copied"; }
     catch (e) { copyBtn.textContent = "Couldn't copy"; }
   };
-  actions.append(addBtn, copyBtn);
+  const debugBtn = el("button", "secondary", "Copy debug info");
+  debugBtn.title = "What the extension saw on this page (may include the seller's name): paste it to get this site fixed";
+  debugBtn.onclick = async () => {
+    const { debug, ...found } = a;
+    try { await navigator.clipboard.writeText(JSON.stringify({ found: { ...found, description: found.description.slice(0, 200) }, ...debug }, null, 1));
+          debugBtn.textContent = "Copied"; }
+    catch (e) { debugBtn.textContent = "Couldn't copy"; }
+  };
+  actions.append(addBtn, copyBtn, debugBtn);
   nodes.push(actions, el("div", "muted", "Opens your dashboard's Add car form filled in: check it, then Save."));
   out.replaceChildren(...nodes);
 }
