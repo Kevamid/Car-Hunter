@@ -14,7 +14,8 @@ import time
 
 from scrapers.base import BaseScraper
 from scrapers.email_parsers import parse_alert
-from utils.db import get_db_connection, init_db, is_listing_seen, upsert_listing
+from utils.db import find_listing_by_title, get_db_connection, init_db, is_listing_seen, upsert_listing
+from utils.price_drops import drop_before_update, drop_message
 from utils import searches
 from utils.dedupe import duplicate_note, find_duplicate, year_from_title
 from utils.market import price_check
@@ -121,7 +122,31 @@ class EmailAlerts(BaseScraper):
                 kind, car = classify(listing, self.cars)
                 if kind == "other" and self.pass_through:
                     car = OTHER
-                if car is None or is_listing_seen(listing["url"]):
+                if car is None:
+                    continue
+                if site == "Autotrader" and not is_listing_seen(listing["url"]):
+                    # its key is a fingerprint that includes the price: the same title + mileage is the same car
+                    same = find_listing_by_title(site, listing["title"], listing.get("mileage"))
+                    if same:
+                        listing = {**listing, "url": same["clean_url"]}
+                if is_listing_seen(listing["url"]):  # a car we already have: record its price, alert on a drop
+                    price = listing.get("price_value")
+                    dropped = None if car is OTHER else drop_before_update(listing["url"], price)
+                    if dropped:
+                        if sent >= MAX_ALERTS_PER_RUN:
+                            complete = False
+                            break
+                        outcome = self.notifier(drop_message(dropped, price, listing.get("link") or listing["url"]))
+                        if outcome is False:
+                            complete = False  # Telegram failed: retry this email next run
+                            continue
+                        sent += bool(outcome)
+                        if outcome:
+                            time.sleep(self.alert_delay_s)
+                        if listing.get("link"):  # the dashboard's "Open advert" gets the email's fresh link
+                            push_details(listing["url"], link=listing["link"])
+                    if price:
+                        upsert_listing({"url": listing["url"], "price_raw": price, "price_formatted": f"£{price:,}"})
                     continue
                 if sent >= MAX_ALERTS_PER_RUN:
                     complete = False  # leave the email for the next run

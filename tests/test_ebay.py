@@ -137,5 +137,27 @@ class EbayTests(unittest.TestCase):
         self.assertEqual([k for k, *_ in self.sent], ["photo", "text"])
 
 
+    def test_price_drop_alerts_even_on_older_adverts(self):
+        car = {"make": "Mazda", "model": "MX-5", "max_price": 10000}
+        db.mark_search_seeded("ebay|mazda|mx-5")
+        s = self.scraper([summary("5", "2006 Mazda MX-5 2.0", 4995)])
+        s.fetch_listings = lambda c, now=None: EbayScraper.fetch_listings(s, c, now=NOW)
+        s.scrape(car)
+        self.sent.clear()
+        s.client.results = [summary("5", "2006 Mazda MX-5 2.0", 4450, hours_old=24 * 9)]   # 9 days old, £545 less
+        self.assertEqual(s.scrape(car), 0)
+        self.assertEqual(len(self.sent), 1)
+        self.assertIn("📉 <b>Price drop</b>", self.sent[0][1])
+        self.assertIn("Now <b>£4,450</b>, was £4,995 (down £545, 11%)", self.sent[0][1])
+        self.assertEqual(db.get_listing("https://www.ebay.co.uk/itm/5")["price_raw"], 4450)
+        s.scrape(car)
+        self.assertEqual(len(self.sent), 1)                          # same price again: no repeat
+        s.client.results = [summary("5", "2006 Mazda MX-5 2.0", 4400, hours_old=24 * 9)]  # only £50 less: recorded, no alert
+        s.scrape(car)
+        self.assertEqual(len(self.sent), 1)
+        s.client.results = [summary("6", "2005 Mazda MX-5 1.8", 3000, hours_old=24 * 9)]  # old and unseen: still skipped
+        self.assertEqual(s.scrape(car), 0)
+        self.assertIsNone(db.get_listing("https://www.ebay.co.uk/itm/6"))
+
 if __name__ == "__main__":
     unittest.main()

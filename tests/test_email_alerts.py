@@ -188,6 +188,26 @@ class PipelineTests(unittest.TestCase):
         row = db.get_db_connection().execute("SELECT make, model FROM listings WHERE title LIKE '%Cayman%'").fetchone()
         self.assertEqual((row["make"], row["model"]), ("Other", "cars"))
 
+    def test_price_drop_from_a_later_email(self):
+        self.assertEqual(self.run_with([msg(PH_HTML)]), 2)
+        cheaper = PH_HTML.replace("£4,995", "£4,500")
+        self.assertEqual(self.run_with([msg(cheaper, mid="<2@ph>")]), 0)
+        self.assertIn("📉 <b>Price drop</b>: 2003 Mazda MX-5 1.8i Sport", self.sent[-1])
+        self.assertIn("Now <b>£4,500</b>, was £4,995", self.sent[-1])
+        self.assertEqual(len(self.sent), 3)
+
+    def test_autotrader_same_car_new_price_is_a_drop_not_a_new_car(self):
+        email = fixture("autotrader_four_listings.html")
+        self.run_with([msg(email, sender="alerts@service.autotrader.co.uk", mid="<a1@at>")])
+        first = len(self.sent)
+        cheaper = email.replace("&pound;3,995", "&pound;3,750")
+        self.assertEqual(self.run_with([msg(cheaper, sender="alerts@service.autotrader.co.uk", mid="<a2@at>")]), 0)
+        self.assertEqual(len(self.sent), first + 1)
+        self.assertIn("Now <b>£3,750</b>, was £3,995", self.sent[-1])
+        count = db.get_db_connection().execute(
+            "SELECT COUNT(*) FROM listings WHERE source = 'Autotrader'").fetchone()[0]
+        self.assertEqual(count, 4)                                   # no second tile for the same car
+
     def test_alerts_once_per_listing_and_email(self):
         self.assertEqual(self.run_with([msg(PH_HTML)]), 2)       # MX-5 £4,995 and Clio 197; the £12,500 MX-5 is over budget
         self.assertEqual(len(self.sent), 2)

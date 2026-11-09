@@ -55,6 +55,29 @@ class SyncTests(unittest.TestCase):
         self.assertEqual((row["url"], row["price"], row["mileage"]), ("https://www.ebay.co.uk/itm/1", 4995, 89000))
         self.assertTrue(row["first_seen_at"].endswith("Z"))         # SQLite UTC timestamps marked as UTC
 
+    def test_sync_sends_the_previous_price_after_a_change(self):
+        row = {"url": "https://www.ebay.co.uk/itm/1", "source": "eBay", "make": "Mazda", "model": "MX-5",
+               "title": "2003 Mazda MX-5", "price_raw": 4995, "price_formatted": "£4,995"}
+        db.upsert_listing(row)
+        db.upsert_listing({**row, "price_raw": 4500, "price_formatted": "£4,500"})
+        with mock.patch.dict(os.environ, ENV), mock.patch("urllib.request.urlopen", self.urlopen):
+            ss.sync_all()
+        sent = json.loads(self.requests[0].data)[0]
+        self.assertEqual((sent["price"], sent["previous_price"]), (4500, 4995))
+        self.assertTrue(sent["price_changed_at"].endswith("Z"))
+
+    def test_sync_still_works_before_the_price_columns_exist(self):
+        db.upsert_listing({"url": "https://www.ebay.co.uk/itm/1", "source": "eBay", "make": "Mazda", "model": "MX-5",
+                           "title": "2003 Mazda MX-5", "price_raw": 4995, "price_formatted": "£4,995"})
+        def urlopen(request, timeout=None):
+            self.requests.append(request)
+            if "previous_price" in request.full_url:
+                raise urllib.error.HTTPError(request.full_url, 400, "Bad Request", {}, io.BytesIO(b'{"message":"no column"}'))
+            return FakeResponse(b"")
+        with mock.patch.dict(os.environ, ENV), mock.patch("urllib.request.urlopen", urlopen):
+            self.assertEqual(ss.sync_all(), 1)
+        self.assertNotIn("previous_price", json.loads(self.requests[-1].data)[0])
+
     def test_push_details_sends_only_what_it_has(self):
         with mock.patch.dict(os.environ, ENV), mock.patch("urllib.request.urlopen", self.urlopen):
             self.assertTrue(ss.push_details("https://x", images=["https://img/1.jpg"], market="💷 line",

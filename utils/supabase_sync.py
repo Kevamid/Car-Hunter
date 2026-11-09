@@ -58,6 +58,19 @@ def _clean(row):
 
 BASIC = ["url", "source", "make", "model", "title", "price", "mileage", "year", "transmission", "fuel",
          "location", "seller_type", "first_seen_at", "last_seen_at"]
+PRICE_CHANGE = ["previous_price", "price_changed_at"]  # columns from supabase/004_price_drops.sql
+
+
+def _price_changes(conn):
+    """{listing id: (previous price, when it changed)} for listings whose latest price differs from the one before."""
+    history = {}
+    for row in conn.execute("SELECT listing_id, price, recorded_at FROM price_history ORDER BY listing_id, id"):
+        history.setdefault(row["listing_id"], []).append((row["price"], row["recorded_at"]))
+    changes = {}
+    for listing_id, prices in history.items():
+        if len(prices) >= 2 and prices[-1][0] != prices[-2][0]:
+            changes[listing_id] = (prices[-2][0], f"{prices[-1][1]}Z")
+    return changes
 
 
 def sync_all():
@@ -68,8 +81,9 @@ def sync_all():
     init_db()  # an empty or brand-new database has no tables yet
     conn = get_db_connection()
     try:
+        changes = _price_changes(conn)
         listings = conn.execute(
-            "SELECT clean_url, source, make, model, title, price_raw, mileage, year, transmission, fuel_type, "
+            "SELECT id, clean_url, source, make, model, title, price_raw, mileage, year, transmission, fuel_type, "
             "location, seller_type, first_seen_at, last_seen_at FROM listings").fetchall()
     finally:
         conn.close()
@@ -81,12 +95,21 @@ def sync_all():
         # SQLite CURRENT_TIMESTAMP is UTC without a zone: say so explicitly
         "first_seen_at": f"{r['first_seen_at']}Z" if r["first_seen_at"] else None,
         "last_seen_at": f"{r['last_seen_at']}Z" if r["last_seen_at"] else None,
+        "previous_price": changes.get(r["id"], (None, None))[0],
+        "price_changed_at": changes.get(r["id"], (None, None))[1],
     } for r in listings]
+    # every row must carry the same keys for a bulk upsert: keep Nones here (they write NULL)
+    columns = BASIC + PRICE_CHANGE
     sent = 0
     for i in range(0, len(rows), BATCH):
-        # every row must carry the same keys for a bulk upsert: keep Nones here (they write NULL)
-        if _post(rows[i:i + BATCH], BASIC):
-            sent += len(rows[i:i + BATCH])
+        batch = rows[i:i + BATCH]
+        ok = _post([{k: r[k] for k in columns} for r in batch], columns)
+        if not ok and i == 0 and columns != BASIC:
+            columns = BASIC  # price-change columns not added in Supabase yet: sync the rest
+            print("Supabase sync: run supabase/004_price_drops.sql to show price drops on the dashboard")
+            ok = _post([{k: r[k] for k in columns} for r in batch], columns)
+        if ok:
+            sent += len(batch)
     return sent
 
 

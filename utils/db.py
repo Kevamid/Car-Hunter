@@ -87,6 +87,26 @@ def is_listing_seen(clean_url: str) -> bool:
     conn.close()
     return row is not None
 
+def get_listing(clean_url: str):
+    """The stored listing as a dict, or None."""
+    conn = get_db_connection()
+    row = conn.execute("SELECT * FROM listings WHERE clean_url = ?", (clean_url.split("?")[0],)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+def find_listing_by_title(source: str, title: str, mileage, days: int = 90):
+    """The latest listing from `source` with this exact title and mileage, seen in the last `days`, or None.
+    For sources whose key changes with the price (Autotrader emails: title+price+mileage fingerprint)."""
+    if not title or not mileage:
+        return None
+    conn = get_db_connection()
+    row = conn.execute(
+        "SELECT * FROM listings WHERE source = ? AND lower(title) = lower(?) AND mileage = ? "
+        "AND last_seen_at >= datetime('now', ?) ORDER BY last_seen_at DESC LIMIT 1",
+        (source, title, int(mileage), f"-{days} days")).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
 def upsert_listing(data: dict) -> bool:
     """
     Inserts a new listing or updates timestamp/price if previously seen.

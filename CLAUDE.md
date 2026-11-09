@@ -79,6 +79,14 @@ Private web dashboard of every car found, with photos, details and favourites.
   keeps it in localStorage `carhunter.pending` (survives sign-in), clears the hash and opens the Add form filled in
   (incl. description and `details.Registration`). The extension holds no keys. Tested headless on synthetic pages
   only: tune per site with real adverts (Kev's browser, his own page views; never automated fetching).
+- PRICE DROPS (9 Nov 2026, `utils/price_drops.py`): a car already in the DB that reappears £100+ cheaper (MIN_DROP)
+  gets a "📉 Price drop" Telegram message (alert, then save; smaller changes recorded silently), only for switched-on
+  searches and never during a seeding run. eBay: `fetch_listings` keeps adverts older than 48h IF already seen, so
+  their prices are re-checked (new cars still need to be fresh). Emails: seen listings record their price;
+  Autotrader's fingerprint includes the price, so a new fingerprint with the same title + mileage within 90 days
+  (`db.find_listing_by_title`) is the same car (no second row). Dashboard: `cars.previous_price` /
+  `price_changed_at` (`supabase/004_price_drops.sql`) filled by `sync_all` from `price_history` (falls back to the
+  basic columns if 004 isn't run); "↓ £500 · was £6,500" badge + "↓ Reduced" chip.
 - eBay API licence: storing listing descriptions/photos for a private personal dashboard; re-read the licence before
   anything public.
 

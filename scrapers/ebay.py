@@ -20,6 +20,7 @@ from utils.supabase_sync import push_details, text_from_html
 from utils.ebay_api import EbayClient
 from utils.matching import title_matches
 from utils.notifier import format_alert, send_telegram, send_telegram_photo
+from utils.price_drops import drop_before_update, drop_message
 
 SOURCE = "eBay"
 FRESH_HOURS = 48
@@ -127,7 +128,8 @@ class EbayScraper(BaseScraper):
             item = listing_from_summary(summary)
             if "AUCTION" in item["buying"]:
                 reason = "auction"
-            elif item["listed"] and now - item["listed"] > timedelta(hours=self.fresh_hours):
+            elif item["listed"] and now - item["listed"] > timedelta(hours=self.fresh_hours) \
+                    and not is_listing_seen(item["url"]):  # cars we already have stay in, to catch price drops
                 reason = "old"
             elif not item["price_value"] or (hi and item["price_value"] > hi) or item["price_value"] < lo:
                 reason = "price"
@@ -178,6 +180,12 @@ class EbayScraper(BaseScraper):
         for item in self.fetch_listings(car):
             duplicate = None
             if is_listing_seen(item["url"]):
+                dropped = None if seeding else drop_before_update(item["url"], item["price_value"])
+                if dropped:
+                    outcome = self.notifier(drop_message(dropped, item["price_value"], item["url"]))
+                    if outcome is False:
+                        continue  # send failed: keep the old price so the next run retries
+                    time.sleep(self.alert_delay_s)
                 upsert_listing(self._to_db_row(item, car))  # refresh last_seen, record price changes
                 continue
             if not seeding:

@@ -242,8 +242,10 @@ function renderSignIn(message) {
 }
 
 /* ---------- data + state ---------- */
-const state = { cars: [], favs: new Map(), q: "", model: "", source: "", max: "", favOnly: false, showEnded: false, sort: "new", open: null };
+const state = { cars: [], favs: new Map(), q: "", model: "", source: "", max: "", favOnly: false, showEnded: false, reduced: false, sort: "new", open: null };
 const ended = c => (c.details || {}).listing_status === "ended";
+const reduced = c => c.previous_price != null && c.price != null && c.previous_price > c.price;
+const dropBadge = c => reduced(c) ? `<span class="badge good">↓ ${gbp(c.previous_price - c.price)} · was ${gbp(c.previous_price)}</span>` : "";
 const manual = c => (c.details || {}).added_by === "manual";
 Object.assign(state, load("carhunter.filters") || {});
 state.open = null;
@@ -301,6 +303,7 @@ function filtered() {
     (!state.source || c.source === state.source) &&
     (!state.favOnly || state.favs.has(c.url)) &&
     (state.showEnded || !ended(c) || state.favs.has(c.url)) &&
+    (!state.reduced || reduced(c)) &&
     (c.price == null || c.price <= max) &&
     (!q || `${c.title} ${c.make} ${c.model} ${c.location || ""}`.toLowerCase().includes(q)));
   const by = { new: (a, b) => Date.parse(b.first_seen_at) - Date.parse(a.first_seen_at),
@@ -321,6 +324,7 @@ function renderShell() {
       <div class="filters">
         <input type="search" id="q" placeholder="Search" value="${esc(state.q)}" aria-label="Search">
         <button class="chip" id="fav" aria-pressed="${state.favOnly}">★ Favourites</button>
+        <button class="chip" id="reduced" aria-pressed="${state.reduced}">↓ Reduced</button>
         <button class="chip" id="ended" aria-pressed="${state.showEnded}">Show ended</button>
         <select id="model" aria-label="Model"><option value="">All models</option>${models.map(m => `<option ${m === state.model ? "selected" : ""}>${esc(m)}</option>`).join("")}</select>
         <select id="source" aria-label="Site"><option value="">All sites</option>${sources.map(s => `<option ${s === state.source ? "selected" : ""}>${esc(s)}</option>`).join("")}</select>
@@ -332,7 +336,7 @@ function renderShell() {
     </div></header>
     <main><div class="wrap"><div class="grid" id="grid"></div></div></main>
     <div class="sheet" id="sheet" role="dialog" aria-modal="true"></div>`;
-  const remember = () => store("carhunter.filters", { q: state.q, model: state.model, source: state.source, max: state.max, favOnly: state.favOnly, showEnded: state.showEnded, sort: state.sort });
+  const remember = () => store("carhunter.filters", { q: state.q, model: state.model, source: state.source, max: state.max, favOnly: state.favOnly, showEnded: state.showEnded, reduced: state.reduced, sort: state.sort });
   const on = (id, ev, fn) => document.getElementById(id).addEventListener(ev, e => { fn(e); remember(); renderList(); });
   on("q", "input", e => state.q = e.target.value);
   on("model", "change", e => state.model = e.target.value);
@@ -340,6 +344,7 @@ function renderShell() {
   on("max", "input", e => state.max = e.target.value);
   on("sort", "change", e => state.sort = e.target.value);
   on("fav", "click", e => { state.favOnly = !state.favOnly; e.target.setAttribute("aria-pressed", state.favOnly); });
+  on("reduced", "click", e => { state.reduced = !state.reduced; e.target.setAttribute("aria-pressed", state.reduced); });
   on("ended", "click", e => { state.showEnded = !state.showEnded; e.target.setAttribute("aria-pressed", state.showEnded); });
   document.getElementById("refresh").onclick = loadData;
   document.getElementById("searches").onclick = openSearches;
@@ -388,7 +393,7 @@ function renderList() {
         <div class="price">${gbp(c.price) || "Price not given"}</div>
         <div class="title">${esc(c.title)}</div>
         <div class="tfacts">${facts.map(([k, v]) => `<span>${k ? esc(k) + " " : ""}<b>${esc(v)}</b></span>`).join("")}</div>
-        <div class="tbadges">${ended(c) ? `<span class="badge warn">Ended</span>` : ""}${marketBadge(c.market)}${manual(c) ? `<span class="badge manual">Added by you</span>` : ""}${dup ? `<span class="badge plain">Also on ${esc(dup.source)}</span>` : ""}</div>
+        <div class="tbadges">${dropBadge(c)}${ended(c) ? `<span class="badge warn">Ended</span>` : ""}${marketBadge(c.market)}${manual(c) ? `<span class="badge manual">Added by you</span>` : ""}${dup ? `<span class="badge plain">Also on ${esc(dup.source)}</span>` : ""}</div>
         <div class="tfoot"><span class="meta">Found ${esc(ago(c.first_seen_at))}</span>
           <span><button class="info" data-url="${esc(c.url)}" aria-label="More details">ⓘ</button> <span class="open-link">Open advert ↗</span></span></div>
       </div></article>`;
@@ -418,7 +423,7 @@ function renderDetail() {
       ${imgs.length > 1 ? `<button class="navbtn prev" id="prev" aria-label="Previous photo">‹</button><button class="navbtn next" id="next" aria-label="Next photo">›</button>` : ""}
       <div class="counter" id="counter">1 / ${imgs.length}</div></div>` : ""}
     <div class="detail">
-      <div><h2>${esc(c.title)}</h2><div class="price" style="margin-top:4px">${gbp(c.price)}</div>${ended(c) ? `<span class="badge warn">Advert ended</span> ` : ""}${marketBadge(c.market)}</div>
+      <div><h2>${esc(c.title)}</h2><div class="price" style="margin-top:4px">${gbp(c.price)}</div>${dropBadge(c)} ${ended(c) ? `<span class="badge warn">Advert ended</span> ` : ""}${marketBadge(c.market)}</div>
       <div class="actions">
         ${safeUrl(c.link || c.url) ? `<a class="primary" href="${esc(c.link || c.url)}" target="_blank" rel="noopener noreferrer">Open advert on ${esc(c.source)}</a>` : ""}
         ${dup && safeUrl(dup.link || dup.url) ? `<a class="secondary" href="${esc(dup.link || dup.url)}" target="_blank" rel="noopener noreferrer">Also on ${esc(dup.source)}</a>` : ""}
