@@ -26,6 +26,10 @@ jobs:
       ALERTS_APP_PASSWORD: ${{ secrets.ALERTS_APP_PASSWORD }}
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+      MOT_CLIENT_ID: ${{ secrets.MOT_CLIENT_ID }}          # DVSA MOT history API, for "Assess this car"
+      MOT_CLIENT_SECRET: ${{ secrets.MOT_CLIENT_SECRET }}
+      MOT_API_KEY: ${{ secrets.MOT_API_KEY }}
+      MOT_TOKEN_URL: ${{ secrets.MOT_TOKEN_URL }}
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -75,6 +79,10 @@ jobs:
       - name: Fill In Missing Photos (Supabase)
         if: always()
         run: python -m utils.photo_backfill
+
+      - name: Assess Queued Cars (dashboard requests)
+        if: always()
+        run: python -m assess.queue
 
       - name: Upload Current Database Artifact
         if: always()

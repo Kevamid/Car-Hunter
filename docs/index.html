@@ -435,6 +435,7 @@ function renderDetail() {
       ${manual(c) && (c.details || {}).note ? `<div class="section"><h3>Added with this note</h3><div class="desc">${esc(c.details.note)}</div></div>` : ""}
       ${fav ? `<div class="section"><h3>Your note</h3><textarea id="note" placeholder="e.g. rang seller, viewing Saturday">${esc(state.favs.get(c.url))}</textarea>
         <div class="note-status" id="nstat"></div></div>` : ""}
+      <div class="section" id="assess"></div>
       ${manual(c) ? `<div class="actions"><button class="danger" id="delete">Delete this car</button></div>` : ""}
     </div>`;
   sheet.classList.add("open"); sheet.scrollTop = 0;
@@ -457,6 +458,7 @@ function renderDetail() {
     const p = document.getElementById("prev"), n = document.getElementById("next");
     if (p) { p.onclick = () => go(-1); n.onclick = () => go(1); }
   }
+  renderAssess(c);
   const note = document.getElementById("note");
   if (note) {
     let t;
@@ -468,6 +470,56 @@ function renderDetail() {
       }, 700);
     });
   }
+}
+
+/* ---------- assess this car: queued here, run by the 15-minute pipeline (DVSA keys stay server-side) ---------- */
+state.assess = new Map();  // car url -> latest assessment row (or null)
+
+async function renderAssess(c, refetch) {
+  const box = document.getElementById("assess"); if (!box) return;
+  if (refetch || !state.assess.has(c.url)) {
+    box.innerHTML = `<h3>Assessment</h3><div class="note-status">Loading...</div>`;
+    try {
+      const rows = await api(`assessments?url=eq.${encodeURIComponent(c.url)}&order=requested_at.desc&limit=1`);
+      state.assess.set(c.url, rows[0] || null);
+    } catch (e) {
+      box.innerHTML = /404/.test(e.message) ? `<h3>Assessment</h3><p class="hint">To assess cars from here, run <b>supabase/005_assessments.sql</b> in Supabase's SQL Editor (one-off).</p>` : "";
+      return;
+    }
+    if (state.open !== c.url) return;  // the sheet moved on while loading
+  }
+  const a = state.assess.get(c.url);
+  const isEbay = /(^|\.)ebay\./i.test((() => { try { return new URL(c.url).hostname; } catch (e) { return ""; } })());
+  const reg = (a && a.registration) || (c.details || {}).Registration || "";
+  const queued = a && a.status === "queued";
+  box.innerHTML = `<h3>Assessment</h3>
+    ${queued ? `<p class="hint">Queued ${esc(ago(a.requested_at))}: the report appears here and on Telegram within about 15 minutes.</p>
+                <div class="actions"><button class="secondary" id="a-refresh">Check for the report</button></div>`
+      : `${a && a.report ? `<div class="desc">${esc(a.report)}</div><p class="hint">Checked ${esc(ago(a.done_at || a.requested_at))}${a.registration ? ` for ${esc(a.registration)}` : ""}.</p>` : `<p class="hint">MOT history, mileage, recalls, model weak spots, likely repair costs and price against the market.</p>`}
+         <div class="form" style="gap:8px">
+           <label>Registration${isEbay ? " (optional for eBay)" : ""}<input id="a-reg" value="${esc(reg)}" placeholder="e.g. AB12 CDE" autocapitalize="characters"></label>
+           <div class="actions"><button class="primary" id="a-go">${a ? "Assess again" : "Assess this car"}</button></div>
+           <div class="note-status" id="a-msg"></div>
+         </div>`}`;
+  const refresh = document.getElementById("a-refresh");
+  if (refresh) refresh.onclick = () => renderAssess(c, true);
+  const go = document.getElementById("a-go");
+  if (go) go.onclick = async () => {
+    const registration = document.getElementById("a-reg").value.replace(/\s+/g, "").toUpperCase();
+    const msg = document.getElementById("a-msg");
+    if (!registration && !isEbay) { msg.textContent = "Enter the registration (it's on the advert's photos or ask the seller)."; return; }
+    if (registration && !/^[A-Z0-9]{2,8}$/.test(registration)) { msg.textContent = "That doesn't look like a registration."; return; }
+    go.disabled = true; msg.textContent = "Queueing...";
+    try {
+      const saved = await api("assessments", { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify({
+        url: c.url, registration: registration || null, title: c.title, price: c.price ?? null, mileage: c.mileage ?? null, year: c.year ?? null }) });
+      state.assess.set(c.url, saved[0]);
+      renderAssess(c);
+    } catch (e) {
+      go.disabled = false;
+      msg.textContent = /404/.test(e.message) ? "Run supabase/005_assessments.sql in Supabase first (one-off)." : "Couldn't queue it. Please try again.";
+    }
+  };
 }
 
 /* ---------- add a car you found yourself ---------- */

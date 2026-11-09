@@ -87,6 +87,14 @@ Private web dashboard of every car found, with photos, details and favourites.
   (`db.find_listing_by_title`) is the same car (no second row). Dashboard: `cars.previous_price` /
   `price_changed_at` (`supabase/004_price_drops.sql`) filled by `sync_all` from `price_history` (falls back to the
   basic columns if 004 isn't run); "↓ £500 · was £6,500" badge + "↓ Reduced" chip.
+- ASSESS THIS CAR (9 Nov 2026): the detail sheet's "Assessment" section queues a row in Supabase `assessments`
+  (`supabase/005_assessments.sql`; RLS: allowed users read/insert queued rows/delete; only the service key writes
+  reports) with url, registration (prefilled from `details.Registration`), title, price, mileage, year. Workflow step
+  "Assess Queued Cars" (`python -m assess.queue`, max 10 per run) builds the bot-style request ("AB12CDE £8,995
+  74000 miles 2009", + the link for eBay only; other sites' links are never opened), runs `assess.service.
+  assess_text`, saves the report (status done/error) and THEN sends it to Telegram (unsaved = retried, no duplicate).
+  Needs GitHub secrets MOT_CLIENT_ID / MOT_CLIENT_SECRET / MOT_API_KEY / MOT_TOKEN_URL (without them each request
+  gets a "not set up" report). Registration required except for eBay adverts.
 - eBay API licence: storing listing descriptions/photos for a private personal dashboard; re-read the licence before
   anything public.
 
