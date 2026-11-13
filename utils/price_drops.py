@@ -11,22 +11,34 @@ from utils.db import get_listing
 MIN_DROP = 100  # £
 
 
+def _int(value):
+    """An int from a stored value that may be text ("56,000", "4995"); None if there isn't one."""
+    try:
+        return int(float(str(value).replace(",", "").strip()))
+    except (TypeError, ValueError):
+        return None
+
+
 def drop_before_update(url, new_price, stored=None):
     """The stored listing (dict) if `new_price` is a drop worth an alert, else None."""
+    new_price = _int(new_price)
     if not new_price:
         return None
     row = stored if stored is not None else get_listing(url)
-    if row and row.get("price_raw") and new_price <= row["price_raw"] - MIN_DROP:
+    old = _int((row or {}).get("price_raw"))
+    if old and new_price <= old - MIN_DROP:
         return row
     return None
 
 
 def drop_message(row, new_price, link):
     """Telegram (HTML) message: title, new and old price, year/mileage, link."""
-    old = row["price_raw"]
+    old = _int(row["price_raw"])
+    new_price = _int(new_price)
     diff = old - new_price
+    miles = _int(row.get("mileage"))  # stored values can be text (e.g. "56,000"): never trust the type
     facts = " · ".join(x for x in (str(row["year"]) if row.get("year") else None,
-                                   f"{row['mileage']:,} miles" if row.get("mileage") else None) if x)
+                                   f"{miles:,} miles" if miles else None) if x)
     source = html.escape(str(row.get("source") or ""))
     link_line = (f'{source}: <a href="{html.escape(link, quote=True)}">View advert</a>' if len(link) > 100
                  else f"{source}: {link}")
